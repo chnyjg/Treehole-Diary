@@ -1,0 +1,31 @@
+{
+  "name": "treehole-diary",
+  "version": "0.1.0",
+  "description": "Obsidian plugin that imports encrypted diary emails over IMAP",
+  "main": "main.js",
+  "license": "MIT",
+  "author": "chnyjg",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/chnyjg/Treehole-Diary.git"
+  },
+  "scripts": {
+    "dev": "node esbuild.config.mjs",
+    "build": "tsc -noEmit -skipLibCheck && node esbuild.config.mjs production",
+    "test": "node test/crypto_align.test.mjs && node test/envelope.test.mjs",
+    "check": "node scripts/check-release.mjs",
+    "notices": "node scripts/gen-notices.mjs"
+  },
+  "dependencies": {
+    "imapflow": "^1.0.0",
+    "mailparser": "^3.6.0"
+  },
+  "devDependencies": {
+    "builtin-modules": "^4.0.0",
+    "esbuild": "^0.21.0",
+    "obsidian": "^1.4.0",
+    "tslib": "^2.6.0",
+    "typescript": "^5.4.0",
+    "@types/node": "^20.0.0"
+  }
+}

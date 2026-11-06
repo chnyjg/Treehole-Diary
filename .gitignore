@@ -1,0 +1,10 @@
+node_modules/
+main.js
+*.js.map
+*.tsbuildinfo
+.DS_Store
+
+# 引导配置样本可能含邮箱与授权码，绝不入库
+*.liuhen
+*.shudong
+test/mock_device.shudong

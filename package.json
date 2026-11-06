@@ -1,6 +1,6 @@
 {
   "name": "treehole-diary",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Obsidian plugin that imports encrypted diary emails over IMAP",
   "main": "main.js",
   "license": "MIT",

@@ -211,14 +211,14 @@ class PassphraseModal extends Modal {
   onOpen() {
     const { contentEl } = this;
     contentEl.empty();
-    contentEl.createEl("h3", { text: "输入引导口令" });
+    new Setting(contentEl).setName("输入引导口令").setHeading();
     contentEl.createEl("p", {
       text: "请输入 App 导出配置时屏幕上显示的一次性口令。",
     });
     const input = contentEl.createEl("input");
     input.type = "password";
     input.placeholder = "一次性口令";
-    input.style.width = "100%";
+    input.setCssStyles({ width: "100%" });
     input.addEventListener("keydown", (e) => {
       if (e.key === "Enter") {
         this.onSubmit(input.value);
@@ -226,7 +226,7 @@ class PassphraseModal extends Modal {
       }
     });
     const btn = contentEl.createEl("button", { text: "确定" });
-    btn.style.marginTop = "12px";
+    btn.setCssStyles({ marginTop: "12px" });
     btn.addEventListener("click", () => {
       this.onSubmit(input.value);
       this.close();
@@ -246,7 +246,7 @@ class ImportConfigModal extends Modal {
   onOpen() {
     const { contentEl } = this;
     contentEl.empty();
-    contentEl.createEl("h3", { text: "导入引导配置 (.shudong)" });
+    new Setting(contentEl).setName("导入引导配置 (.shudong)").setHeading();
     contentEl.createEl("p", {
       text:
         "把手机「导出引导配置」生成的 .shudong 文件内容粘贴到下方，无需口令，粘贴后直接导入。" +
@@ -256,15 +256,12 @@ class ImportConfigModal extends Modal {
     const ta = contentEl.createEl("textarea");
     ta.rows = 8;
     ta.placeholder = "在此粘贴 .shudong 文件内容（一段 JSON 文本）";
-    ta.style.width = "100%";
-    ta.style.marginTop = "8px";
-    ta.style.fontFamily = "monospace";
-    ta.style.fontSize = "12px";
+    ta.setCssStyles({ width: "100%", marginTop: "8px", fontFamily: "monospace", fontSize: "12px" });
 
     const btnRow = contentEl.createEl("div");
-    btnRow.style.marginTop = "12px";
+    btnRow.setCssStyles({ marginTop: "12px" });
     const readBtn = btnRow.createEl("button", { text: "从剪贴板读取" });
-    readBtn.style.marginRight = "8px";
+    readBtn.setCssStyles({ marginRight: "8px" });
     readBtn.addEventListener("click", async () => {
       try {
         const txt = await (navigator as any).clipboard.readText();
@@ -279,7 +276,7 @@ class ImportConfigModal extends Modal {
       }
     });
     const importBtn = btnRow.createEl("button", { text: "导入" });
-    importBtn.style.marginLeft = "8px";
+    importBtn.setCssStyles({ marginLeft: "8px" });
     importBtn.addEventListener("click", () => {
       const txt = ta.value.trim();
       if (!txt) {
@@ -304,7 +301,7 @@ class AddAccountModal extends Modal {
   onOpen() {
     const { contentEl } = this;
     contentEl.empty();
-    contentEl.createEl("h3", { text: "手动添加账号" });
+    new Setting(contentEl).setName("手动添加账号").setHeading();
 
     const fields: Record<string, HTMLInputElement> = {};
     const mk = (label: string, placeholder: string, type = "text") => {
@@ -312,8 +309,7 @@ class AddAccountModal extends Modal {
       const i = contentEl.createEl("input");
       i.type = type;
       i.placeholder = placeholder;
-      i.style.width = "100%";
-      i.style.marginBottom = "8px";
+      i.setCssStyles({ width: "100%", marginBottom: "8px" });
       fields[label] = i;
       return i;
     };
@@ -328,7 +324,7 @@ class AddAccountModal extends Modal {
     });
 
     const btn = contentEl.createEl("button", { text: "保存" });
-    btn.style.marginTop = "12px";
+    btn.setCssStyles({ marginTop: "12px" });
     btn.addEventListener("click", () => {
       const email = fields["邮箱"].value.trim();
       const imapHost = fields["IMAP 主机"].value.trim();
@@ -365,7 +361,7 @@ class LiuhunSettingTab extends PluginSettingTab {
   display() {
     const { containerEl } = this;
     containerEl.empty();
-    containerEl.createEl("h2", { text: "树洞日记" });
+    new Setting(containerEl).setName("树洞日记").setHeading();
 
     new Setting(containerEl)
       .setName("输出文件夹")
@@ -405,7 +401,7 @@ class LiuhunSettingTab extends PluginSettingTab {
           })
       );
 
-    containerEl.createEl("h3", { text: "账号" });
+    new Setting(containerEl).setName("账号").setHeading();
     this.plugin.settings.accounts.forEach((acct) => {
       new Setting(containerEl)
         .setName(acct.email)

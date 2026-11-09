@@ -5,9 +5,12 @@ import {
   App,
   Modal,
   Notice,
+  ButtonComponent,
 } from "obsidian";
 import { decryptEnvelope, Envelope } from "./crypto";
 import { syncAccount } from "./sync";
+import { scanDiaryMails, cleanupDiaryMails } from "./cleanup";
+import type { DiaryMailHit } from "./cleanup";
 import { Account, LiuhunSettings, DEFAULT_SETTINGS } from "./types";
 
 function genId(): string {
@@ -352,6 +355,128 @@ class AddAccountModal extends Modal {
   }
 }
 
+/**
+ * 「清空日记邮件」二次确认。
+ * 设计要点：删除不可逆，所以把「是否已同步」由程序兜底 ——
+ * 点确认后先完整同步一次，同步失败就一封不删；通过后才按 UID 删除。
+ */
+class CleanupConfirmModal extends Modal {
+  plugin: LiuhunReader;
+  acct: Account;
+  private hits: DiaryMailHit[] = [];
+  private busy = false;
+  private delBtn?: ButtonComponent;
+
+  constructor(app: App, plugin: LiuhunReader, acct: Account) {
+    super(app);
+    this.plugin = plugin;
+    this.acct = acct;
+  }
+
+  onOpen() {
+    const { contentEl } = this;
+    contentEl.empty();
+
+    new Setting(contentEl).setName("清空邮箱里的日记邮件").setHeading();
+
+    contentEl.createEl("p", {
+      text: "永久删除邮箱里由「树洞日记」发出的日记邮件以腾出空间，此操作不可恢复。",
+    });
+    contentEl.createEl("p", {
+      text: "只删除主题形如「Log [标签] 日期」且发件人为本账号的邮件，其余不动；点确认后插件会先自动同步一次，同步失败则一封不删。",
+    });
+
+    const info = contentEl.createEl("p", { text: "正在检查邮箱…" });
+
+    new Setting(contentEl)
+      .addButton((b) => b.setButtonText("取消").onClick(() => this.close()))
+      .addButton((b) => {
+        this.delBtn = b;
+        b.setButtonText("检查中…").setDisabled(true).setWarning();
+        b.onClick(() => void this.confirmDelete());
+      });
+
+    void (async () => {
+      try {
+        const hits = await scanDiaryMails(this.acct);
+        this.hits = hits;
+        if (hits.length === 0) {
+          info.setText("邮箱里没有找到可删除的日记邮件。");
+          return;
+        }
+        const sample = hits
+          .slice(0, 3)
+          .map((h) => `「${h.subject}」`)
+          .join("、");
+        info.setText(
+          hits.length > 3
+            ? `共找到 ${hits.length} 封日记邮件，例如 ${sample} 等。`
+            : `共找到 ${hits.length} 封日记邮件：${sample}。`
+        );
+        this.delBtn
+          ?.setButtonText(`我已同步，删除 ${hits.length} 封`)
+          .setDisabled(false);
+      } catch (e) {
+        info.setText(`检查失败：${(e as Error).message}`);
+      }
+    })();
+  }
+
+  private async confirmDelete() {
+    if (this.busy || this.hits.length === 0) return;
+    this.busy = true;
+    this.delBtn?.setButtonText("正在同步并删除…").setDisabled(true);
+
+    // 1) 程序替用户确认「已同步」：先完整同步一次，失败即中止，一封都不删。
+    try {
+      new Notice("清理前先自动同步一次…");
+      const summary = await syncAccount(
+        this.acct,
+        this.plugin.app,
+        this.plugin.settings.outFolder,
+        this.plugin.settings.order
+      );
+      new Notice(`同步完成：${summary}`);
+    } catch (e) {
+      new Notice(
+        `同步失败，已中止清理，未删除任何邮件：${(e as Error).message}`
+      );
+      this.busy = false;
+      this.delBtn
+        ?.setButtonText(`我已同步，删除 ${this.hits.length} 封`)
+        .setDisabled(false);
+      return;
+    }
+
+    // 2) 清理时自己重新扫描 UID（同步不改邮件，但手机上可能刚又发了一封）。
+    try {
+      const r = await cleanupDiaryMails(this.acct);
+      if (r.inbox + r.trash === 0) {
+        new Notice("没有可删除的日记邮件");
+        this.close();
+        return;
+      }
+      const parts = [`收件箱 ${r.inbox} 封`];
+      if (r.trash > 0) parts.push(`「已删除」${r.trash} 封`);
+      new Notice(
+        `清理完成：${parts.join("、")}日记邮件。其他邮件未改动` +
+          (r.warnings.length ? `；注意：${r.warnings.join("；")}` : "")
+      );
+      this.close();
+    } catch (e) {
+      new Notice(`清理失败：${(e as Error).message}`);
+      this.busy = false;
+      this.delBtn
+        ?.setButtonText(`我已同步，删除 ${this.hits.length} 封`)
+        .setDisabled(false);
+    }
+  }
+
+  onClose() {
+    this.contentEl.empty();
+  }
+}
+
 class LiuhunSettingTab extends PluginSettingTab {
   plugin: LiuhunReader;
   constructor(app: App, plugin: LiuhunReader) {
@@ -402,6 +527,9 @@ class LiuhunSettingTab extends PluginSettingTab {
       );
 
     new Setting(containerEl).setName("账号").setHeading();
+    containerEl.createEl("p", {
+      text: "邮箱满了可用「清理邮件」腾空间：只删除本 App 发出的日记邮件，其他邮件保留；删除前会再同步一次并二次确认。",
+    });
     this.plugin.settings.accounts.forEach((acct) => {
       new Setting(containerEl)
         .setName(acct.email)
@@ -413,7 +541,12 @@ class LiuhunSettingTab extends PluginSettingTab {
           })
         )
         .addButton((b) =>
-          b.setButtonText("删除").setWarning().onClick(async () => {
+          b.setButtonText("清理邮件").setWarning().onClick(() => {
+            new CleanupConfirmModal(this.app, this.plugin, acct).open();
+          })
+        )
+        .addButton((b) =>
+          b.setButtonText("删除账号").setWarning().onClick(async () => {
             this.plugin.settings.accounts = this.plugin.settings.accounts.filter(
               (a) => a.id !== acct.id
             );

@@ -31,6 +31,25 @@ export function stripLegacyTagLines(md: string): string {
   return out.join("\n");
 }
 
+// 「标签独占一行」：整行只有 # 标签（可以是多个，用空白分隔）。
+// 标题「# 2026-11-10」# 后有空格，不会命中。
+const TAG_ONLY_LINE = /^(#[^\s#]+)(\s+#[^\s#]+)*$/;
+
+/**
+ * 正文第一个非空行若是「独占一行的 #标签」，在它下方保证一个空行，
+ * 让标签和正文隔开；上方留白由单日文件/汇总稿的拼接（标题、--- 两侧空行）保证。
+ * 已有的空行一律保留，不做重排。
+ */
+export function padTagFirstLine(body: string): string {
+  const lines = body.split("\n");
+  let i = 0;
+  while (i < lines.length && lines[i].trim() === "") i++;
+  if (i >= lines.length || !TAG_ONLY_LINE.test(lines[i].trim())) return body;
+  const tail = lines.slice(i + 1);
+  if (tail.length === 0 || tail[0].trim() === "") return body;
+  return [...lines.slice(0, i + 1), "", ...tail].join("\n");
+}
+
 /**
  * 收集某一天的标签（供 index.md 的链接后缀与「标签统计」用）。
  * ① 兼容历史文件：仍读旧元信息行；② 现在的主要来源：正文里的行内 #标签。

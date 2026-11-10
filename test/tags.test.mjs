@@ -24,7 +24,7 @@ try {
     outfile: out,
     logLevel: "silent",
   });
-  const { stripLegacyTagLines, collectTags } = require(out);
+  const { stripLegacyTagLines, collectTags, padTagFirstLine } = require(out);
 
   // 真实落盘结构：单日文件 + 两篇日记 + --- 分隔线
   const daily = [
@@ -102,6 +102,13 @@ try {
     [],
     "色号 / 纯数字 / URL 锚点不算标签"
   );
+  // 首行独占一行的 #标签：下方补空行；已有空行不重排；标题/句中标签不动
+  assert.equal(padTagFirstLine("#姥姥姥爷 \n正文"), "#姥姥姥爷 \n\n正文");
+  assert.equal(padTagFirstLine("#姥姥姥爷 \n \n正文"), "#姥姥姥爷 \n \n正文");
+  assert.equal(padTagFirstLine("#周末 #带娃\n正文"), "#周末 #带娃\n\n正文");
+  assert.equal(padTagFirstLine("# 2026-11-10\n正文"), "# 2026-11-10\n正文");
+  assert.equal(padTagFirstLine("正文里 #tag 出现\n"), "正文里 #tag 出现\n");
+  assert.equal(padTagFirstLine(""), "");
   console.log("tags: 标签摘除与索引收集用例全部通过");
 } finally {
   rmSync(tmp, { recursive: true, force: true });

@@ -1,6 +1,6 @@
 import { App, Vault } from "obsidian";
 import { DiaryEntry } from "./imap";
-import { collectTags, stripLegacyTagLines } from "./tags";
+import { collectTags, padTagFirstLine, stripLegacyTagLines } from "./tags";
 
 type Adapter = App["vault"]["adapter"];
 
@@ -197,8 +197,11 @@ export async function writeOutputs(
 
       // 把正文里的 {{IMG:k}} 就地替换成图片引用（或文本占位），
       // 使照片落在对应那段文字后面，而不是堆到全文末尾。
-      const imgBody = expandImages(entry.body, eImgs, true);
-      const textBody = expandImages(entry.body, eImgs, false);
+      // 首行是独占一行的 #标签 时，标签下方保一个空行，别和正文贴在一起；
+      // 上方留白由「# 日期」/「---」拼接时的空行保证。
+      const paddedBody = padTagFirstLine(entry.body);
+      const imgBody = expandImages(paddedBody, eImgs, true);
+      const textBody = expandImages(paddedBody, eImgs, false);
       dayPieces.push(blocks.join("\n") + imgBody);
       dayPiecesText.push(blocks.join("\n") + textBody);
     }
@@ -256,6 +259,9 @@ async function readAllDaysFromDisk(
     const dayPieces = body
       .split(/\n\s*---\s*\n/)
       .map((s) => s.trim())
+      // 汇总稿展示用：首行 #标签 下方补空行。只改内存里的展示稿，
+      // 不回写单日文件（本地单日文件是主，格式化不主动重排用户文件）。
+      .map(padTagFirstLine)
       .filter(Boolean);
     if (dayPieces.length === 0) continue;
     // 纯文版：把 ![照片N|480](rel) 换成 [照片N]
@@ -352,6 +358,9 @@ async function writeBundle(
   for (const w of written) {
     withImg.push(`## ${w.date}`);
     noImg.push(`## ${w.date}`);
+    // 标题与首条内容之间留一个空行（与单日文件一致）
+    withImg.push("");
+    noImg.push("");
     w.dayPieces.forEach((piece, i) => {
       if (i > 0) {
         withImg.push("---");

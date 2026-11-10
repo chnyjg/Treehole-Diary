@@ -95,6 +95,14 @@ try {
   assert.ok(daily.includes("#姥姥姥爷"), "正文 #标签 必须在");
   assert.ok(daily.includes("#杨博远"), "第二篇 #标签 必须在");
   assert.ok(
+    daily.includes("#杨博远 \n\n10月底"),
+    "首行独占一行的 #标签 与正文之间要有空行"
+  );
+  assert.ok(
+    vault.store.get(`${OUT}/all_entries_text.md`).includes("## 2026-11-10\n\n"),
+    "汇总稿日期标题后要有空行"
+  );
+  assert.ok(
     !vault.store.get(`${OUT}/all_entries.md`).includes("- 标签："),
     "带图汇总稿也要干净"
   );

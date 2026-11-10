@@ -14,7 +14,7 @@ The plugin works on **desktop only** because it uses the Node.js `crypto` module
 - Read AES-256-GCM encrypted entries (a fixed diary key in v2, with backward compatibility for entries encrypted with a key derived from the mail authorization code) as well as plain-text entries.
 - Import older diary text from import emails and split it into dated entries.
 - Save photo attachments under `assets/YYYY-MM-DD/`; no empty folders are created for days without photos.
-- Import the `.shudong` bootstrap config exported by the phone app with a single paste, without typing server settings by hand.
+- Import the `.treehole` bootstrap config exported by the phone app with a single paste, without typing server settings by hand.
 - Sync automatically when Obsidian starts or when a diary note is opened (optional, at most once every five minutes), or use the manual **Sync now** command.
 - Choose newest-first or oldest-first order for the collected notes.
 
@@ -27,8 +27,8 @@ The plugin works on **desktop only** because it uses the Node.js `crypto` module
 ## Set up and sync
 
 1. Enable IMAP for your mailbox and generate an **authorization code**, not your login password. The IMAP host is usually `imap.<your email domain>` on port 993 with TLS; check your provider if that does not work.
-2. In the Android app, select **Settings → Export bootstrap config** to create a `.shudong` file.
-3. In Obsidian, open **Settings → Treehole Diary → Import bootstrap config (.shudong)**, paste the file content, and select **Import**.
+2. In the Android app, select **Settings → Export bootstrap config** to create a `.treehole` file.
+3. In Obsidian, open **Settings → Treehole Diary → Import bootstrap config (.treehole)**, paste the file content, and select **Import**.
 4. Select **Sync now**, or enable automatic sync on startup.
 
 You can also add an account manually in the plugin settings (email address, IMAP host, authorization code, and optional older authorization codes). If you have replaced your authorization code, add the old one as an alternative so that older emails can still be decrypted.

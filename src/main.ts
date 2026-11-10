@@ -42,7 +42,7 @@ export default class LiuhunReader extends Plugin {
     });
     this.addCommand({
       id: "import-config",
-      name: "导入引导配置(.shudong)",
+      name: "导入引导配置(.treehole)",
       callback: () => this.importConfig(),
     });
     this.addSettingTab(new LiuhunSettingTab(this.app, this));
@@ -257,16 +257,16 @@ class ImportConfigModal extends Modal {
   onOpen() {
     const { contentEl } = this;
     contentEl.empty();
-    new Setting(contentEl).setName("导入引导配置 (.shudong)").setHeading();
+    new Setting(contentEl).setName("导入引导配置 (.treehole)").setHeading();
     contentEl.createEl("p", {
       text:
-        "把手机「导出引导配置」生成的 .shudong 文件内容粘贴到下方，无需口令，粘贴后直接导入。" +
+        "把手机「导出引导配置」生成的 .treehole 文件内容粘贴到下方，无需口令，粘贴后直接导入。" +
         "打开方式：用文本编辑 app 打开该文件 → 全选复制 → 回到这里 Cmd+V；" +
         "或先点「从剪贴板读取」自动填入。",
     });
     const ta = contentEl.createEl("textarea");
     ta.rows = 8;
-    ta.placeholder = "在此粘贴 .shudong 文件内容（一段 JSON 文本）";
+    ta.placeholder = "在此粘贴 .treehole 文件内容（一段 JSON 文本）";
     ta.setCssStyles({ width: "100%", marginTop: "8px", fontFamily: "monospace", fontSize: "12px" });
 
     const btnRow = contentEl.createEl("div");
@@ -589,7 +589,7 @@ class LiuhunSettingTab extends PluginSettingTab {
       })
     );
     new Setting(containerEl).addButton((b) =>
-      b.setButtonText("导入引导配置(.shudong)").onClick(() => {
+      b.setButtonText("导入引导配置(.treehole)").onClick(() => {
         this.plugin.importConfig();
       })
     );

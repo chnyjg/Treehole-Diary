@@ -1,4 +1,4 @@
-// 引导文件(.shudong)信封格式自测（独立实现，验证我们自己的格式正确）
+// 引导文件(.treehole)信封格式自测（独立实现，验证我们自己的格式正确）
 // 运行：node test/envelope.test.mjs
 
 import crypto from "node:crypto";
@@ -58,7 +58,7 @@ console.log(`[1/2] 信封加/解密自洽 ${okRound ? "✅" : "❌"}`);
 console.log(`[2/2] 错误口令被拒   ${okWrong ? "✅" : "❌"}`);
 
 if (okRound && okWrong) {
-  console.log("\n🎉 信封格式正确：.shudong 可正确加密配置，且错误口令无法解密。");
+  console.log("\n🎉 信封格式正确：.treehole 可正确加密配置，且错误口令无法解密。");
   process.exit(0);
 } else {
   console.log("\n⚠️  信封格式存在问题。");

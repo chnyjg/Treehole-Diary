@@ -6,7 +6,7 @@ import * as crypto from "crypto";
  *   KDF : PBKDF2-HMAC-SHA1, salt="liuhen_diary_v1", iter=20000, dklen=32
  *   算法: AES-256-GCM, IV=12 字节(前缀), tag=16 字节(尾附)
  *   文本: Base64(NO_WRAP) 的 (IV ‖ 密文 ‖ tag)
- * - 引导文件(.shudong)：独立的信封格式，用一次性口令加密，与日记加密互不干扰
+ * - 引导文件(.treehole)：独立的信封格式，用一次性口令加密，与日记加密互不干扰
  */
 
 // ---------- 日记解密（兼容 Android） ----------
@@ -49,7 +49,7 @@ export function decryptDiaryText(key: Buffer, b64: string): string {
   return decryptDiaryBytes(key, Buffer.from(b64, "base64")).toString("utf-8");
 }
 
-// ---------- 引导文件信封（.shudong） ----------
+// ---------- 引导文件信封（.treehole） ----------
 export interface DiaryConfig {
   email: string;
   imapHost: string;

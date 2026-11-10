@@ -1,5 +1,6 @@
 import { App, Vault } from "obsidian";
 import { DiaryEntry } from "./imap";
+import { collectTags, stripLegacyTagLines } from "./tags";
 
 type Adapter = App["vault"]["adapter"];
 
@@ -171,7 +172,8 @@ export async function writeOutputs(
     for (const entry of entries) {
       const blocks: string[] = [];
       if (entry.mood) blocks.push(`- 心情：${entry.mood}`);
-      if (entry.tags) blocks.push(`- 标签：${entry.tags}`);
+      // 标签不再单独写一行：用户写的 #标签 本来就在正文里，
+      // 再写「- 标签：xxx」会重复。index 的标签改由正文里的 #标签 收集。
       if (blocks.length) blocks.push("");
 
       const eImgs: ImgRef[] = [];
@@ -243,7 +245,11 @@ async function readAllDaysFromDisk(
     )
       continue;
     const date = base.slice(0, 10);
-    const content = await adapter.read(file);
+    const raw = await adapter.read(file);
+    // 旧版在每段开头写过「- 标签：xxx」；只做定点摘除，其余内容（含用户手改）一字不动。
+    // 摘除后回写，这样单日文件本身也不再带重复行，汇总稿自然也是干净的。
+    const content = stripLegacyTagLines(raw);
+    if (content !== raw) await writeText(adapter, file, content);
     // 去掉首行「# YYYY-MM-DD」标题，取整段正文
     const body = content.replace(/^#\s*\d{4}-\d{2}-\d{2}\s*\n?/, "");
     // 按 normalizeDividers 产生的分隔（--- 独占一行、两侧留空）切成各条记录
@@ -256,17 +262,12 @@ async function readAllDaysFromDisk(
     const dayPiecesText = dayPieces.map((p) =>
       p.replace(/!\[照片(\d+)\|480\]\([^)]*\)/g, "[照片$1]")
     );
-    // 收集标签（用于索引）
-    const tagSet = new Set<string>();
-    for (const m of body.matchAll(/- 标签：([^\n]+)/g)) {
-      for (const t of m[1].split(",")) {
-        const tt = t.trim();
-        if (tt) tagSet.add(tt);
-      }
-    }
+    // 索引标签用原始内容：历史元信息行（摘除前的旧行）+ 正文里的 #标签 都算，
+    // 这样旧文件不再显示重复行，index.md 的链接后缀与「标签统计」也不会丢。
+    const tags = collectTags(raw);
     const entries: DiaryEntry[] = dayPieces.map(() => ({
       date,
-      tags: [...tagSet].join(","),
+      tags: tags.join(","),
       mood: "",
       body: "",
       images: [],

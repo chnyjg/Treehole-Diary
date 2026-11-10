@@ -9,12 +9,20 @@ import {
 } from "obsidian";
 import { decryptEnvelope, Envelope } from "./crypto";
 import { syncAccount } from "./sync";
-import { scanDiaryMails, cleanupDiaryMails } from "./cleanup";
+import { scanDiaryMailGroups, cleanupDiaryMails } from "./cleanup";
 import type { DiaryMailHit } from "./cleanup";
 import { Account, LiuhunSettings, DEFAULT_SETTINGS } from "./types";
 
 function genId(): string {
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+}
+
+/** IMAP 主机留空时按邮箱域名推导：name@example.com → imap.example.com。
+ *  各服务商主机不同，推导不对就在「手动添加账号」里填实际主机。 */
+function guessImapHost(email: string): string {
+  const d = (email.split("@")[1] || "").trim().toLowerCase();
+  if (!d.includes(".") || d.startsWith(".") || d.endsWith(".")) return "";
+  return "imap." + d;
 }
 
 export default class LiuhunReader extends Plugin {
@@ -124,7 +132,7 @@ export default class LiuhunReader extends Plugin {
     if (obj && typeof obj.email === "string" && typeof obj.authCode === "string") {
       this.addAccountFromCfg(
         obj.email,
-        obj.imapHost || "imap.qq.com",
+        obj.imapHost || guessImapHost(obj.email),
         obj.authCode,
         typeof obj.altAuthCode === "string" ? obj.altAuthCode : undefined,
         typeof obj.diaryKey === "string" ? obj.diaryKey : undefined
@@ -158,8 +166,8 @@ export default class LiuhunReader extends Plugin {
       new Notice("配置缺少邮箱或授权码");
       return;
     }
-    const host = imapHost || "imap.qq.com";
-    // 备选码可能有多把（每次改 QQ 密码都会新增一把只能解密的历史密钥），逗号分隔
+    const host = imapHost || guessImapHost(email);
+    // 备选码可能有多把（每次换授权码都会新增一把只能解密的历史密钥），逗号分隔
     const normAlt = (altAuthCode || "")
       .split(",")
       .map((s) => s.trim())
@@ -316,13 +324,13 @@ class AddAccountModal extends Modal {
       fields[label] = i;
       return i;
     };
-    mk("邮箱", "you@qq.com");
-    mk("IMAP 主机", "imap.qq.com");
+    mk("邮箱", "name@example.com");
+    mk("IMAP 主机", "imap.example.com");
     const auth = mk("授权码", "16位授权码", "password");
-    const altAuth = mk("备选授权码（可选，多把逗号分隔）", "旧码A,旧码B（改过QQ密码后旧码只能解密、不能登录）", "password");
+    const altAuth = mk("备选授权码（可选，多把逗号分隔）", "旧码A,旧码B（旧码只解密、不能登录）", "password");
     contentEl.createEl("p", {
       text:
-        "改了 QQ 密码后所有旧授权码会立即失效（不能再登录），但旧码仍是历史加密邮件的解密密钥。" +
+        "换过授权码后，旧码通常就不能再登录邮箱了，但它仍是历史加密邮件的解密密钥。" +
         "换码时把旧码填在这里，历史日记才不会解不开。",
     });
 
@@ -340,7 +348,7 @@ class AddAccountModal extends Modal {
       this.plugin.settings.accounts.push({
         id: genId(),
         email,
-        imapHost: imapHost || "imap.qq.com",
+        imapHost: imapHost || guessImapHost(email),
         authCode: code,
         altAuthCode: alt || undefined,
         enabled: true,
@@ -383,7 +391,7 @@ class CleanupConfirmModal extends Modal {
       text: "永久删除邮箱里由「树洞日记」发出的日记邮件以腾出空间，此操作不可恢复。",
     });
     contentEl.createEl("p", {
-      text: "只删除主题形如「Log [标签] 日期」且发件人为本账号的邮件，其余不动；点确认后插件会先自动同步一次，同步失败则一封不删。",
+      text: "只删除主题形如「Log [标签] 日期」且发件人为本账号的邮件，收件箱、已发送、已删除都会清理，其余不动；点确认后先自动同步一次，同步失败则一封不删。",
     });
 
     const info = contentEl.createEl("p", { text: "正在检查邮箱…" });
@@ -398,7 +406,8 @@ class CleanupConfirmModal extends Modal {
 
     void (async () => {
       try {
-        const hits = await scanDiaryMails(this.acct);
+        const groups = await scanDiaryMailGroups(this.acct);
+        const hits = groups.flatMap((g) => g.hits);
         this.hits = hits;
         if (hits.length === 0) {
           info.setText("邮箱里没有找到可删除的日记邮件。");
@@ -408,10 +417,14 @@ class CleanupConfirmModal extends Modal {
           .slice(0, 3)
           .map((h) => `「${h.subject}」`)
           .join("、");
+        // 自己发给自己的日记邮件在收件箱和「已发送」各有一份，
+        // 确认前把每个文件夹的封数摊开给用户看，避免「删了怎么还有」。
+        const detail = groups
+          .filter((g) => g.hits.length > 0)
+          .map((g) => `${g.label} ${g.hits.length} 封`)
+          .join("、");
         info.setText(
-          hits.length > 3
-            ? `共找到 ${hits.length} 封日记邮件，例如 ${sample} 等。`
-            : `共找到 ${hits.length} 封日记邮件：${sample}。`
+          `共找到 ${hits.length} 封日记邮件（${detail}），例如 ${sample} 等。`
         );
         this.delBtn
           ?.setButtonText(`我已同步，删除 ${hits.length} 封`)
@@ -451,16 +464,30 @@ class CleanupConfirmModal extends Modal {
     // 2) 清理时自己重新扫描 UID（同步不改邮件，但手机上可能刚又发了一封）。
     try {
       const r = await cleanupDiaryMails(this.acct);
-      if (r.inbox + r.trash === 0) {
+      const total = r.inbox + r.sent + r.trash;
+      if (r.warnings.length) {
+        // 只要有文件夹没清干净，哪怕别的删了也绝不报「清理完成」。
+        new Notice(
+          `清理未全部完成：成功 ${total} 封；失败：${r.warnings.join("；")}。` +
+            `未清掉的邮件仍占空间，请到邮箱确认后再重试。`,
+          12000
+        );
+        this.busy = false;
+        this.delBtn
+          ?.setButtonText(`我已同步，删除 ${this.hits.length} 封`)
+          .setDisabled(false);
+        return;
+      }
+      if (total === 0) {
         new Notice("没有可删除的日记邮件");
         this.close();
         return;
       }
-      const parts = [`收件箱 ${r.inbox} 封`];
-      if (r.trash > 0) parts.push(`「已删除」${r.trash} 封`);
+      const parts = r.folders
+        .filter((f) => f.deleted > 0)
+        .map((f) => `${f.label} ${f.deleted} 封`);
       new Notice(
-        `清理完成：${parts.join("、")}日记邮件。其他邮件未改动` +
-          (r.warnings.length ? `；注意：${r.warnings.join("；")}` : "")
+        `清理完成：${parts.join("、")}日记邮件，已复查确认删除。其他邮件未改动`
       );
       this.close();
     } catch (e) {

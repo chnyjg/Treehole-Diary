@@ -26,7 +26,7 @@ The plugin works on **desktop only** because it uses the Node.js `crypto` module
 
 ## Set up and sync
 
-1. Enable IMAP for your mailbox and generate an **authorization code**, not your login password. The default for QQ Mail is `imap.qq.com:993`.
+1. Enable IMAP for your mailbox and generate an **authorization code**, not your login password. The IMAP host is usually `imap.<your email domain>` on port 993 with TLS; check your provider if that does not work.
 2. In the Android app, select **Settings → Export bootstrap config** to create a `.shudong` file.
 3. In Obsidian, open **Settings → Treehole Diary → Import bootstrap config (.shudong)**, paste the file content, and select **Import**.
 4. Select **Sync now**, or enable automatic sync on startup.
@@ -48,7 +48,7 @@ All files are written to the output folder configured in the settings (`树洞�
 - The plugin reads and writes only inside the output folder of your vault. **It does not access files outside the vault.**
 - The plugin is free, requires no account, contains no ads, and has no telemetry. It does not install or update dependencies, and does not update itself.
 
-**Network use** (disclosure required by the [Obsidian developer policies](https://docs.obsidian.md/community-directory/developer-policies)): this plugin connects **only** to the IMAP server you configure yourself (default `imap.qq.com`, port 993, TLS). It reads messages whose subject starts with `Log` and contains a `YYYY-MM-DD` date, downloads their bodies and attachments, and decrypts them locally. It does not send diary content, credentials, or telemetry to the plugin author or to any other service. No other network endpoints are used.
+**Network use** (disclosure required by the [Obsidian developer policies](https://docs.obsidian.md/community-directory/developer-policies)): this plugin connects **only** to the IMAP server you configure yourself (or one derived from your email address when left blank, port 993, TLS). It reads messages whose subject starts with `Log` and contains a `YYYY-MM-DD` date, downloads their bodies and attachments, and decrypts them locally. It does not send diary content, credentials, or telemetry to the plugin author or to any other service. No other network endpoints are used.
 
 ## Encryption
 

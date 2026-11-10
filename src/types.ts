@@ -3,7 +3,7 @@ export interface Account {
   email: string;
   imapHost: string;
   authCode: string;
-  /** 备选授权码：应对「中途重置过 QQ 授权码 / 前段用别的邮箱发」导致旧邮件用不同密钥加密。可空。 */
+  /** 备选授权码：应对「中途换过授权码 / 前段用别的邮箱发」导致旧邮件用不同密钥加密。可空。 */
   altAuthCode?: string;
   /**
    * 固定日记密钥（v2，Base64 的 32 字节 AES-256 密钥）。

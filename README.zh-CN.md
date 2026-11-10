@@ -27,7 +27,7 @@
 
 ## 配置与同步
 
-1. 在邮箱服务商开启 IMAP，并生成**授权码**（不是登录密码）。QQ 邮箱默认是 `imap.qq.com:993`。
+1. 在邮箱服务商开启 IMAP，并生成**授权码**（不是登录密码）。IMAP 主机通常形如 `imap.<邮箱域名>`（端口 993，TLS），以服务商说明为准。
 2. 手机 App：设置 → 导出引导配置，得到 `.shudong` 文件。
 3. Obsidian：设置 → Treehole Diary → 导入引导配置(.shudong) → 粘贴文件内容 → 导入。
 4. 点「立即同步」，或启用「打开时自动同步」。
@@ -51,9 +51,9 @@
 
 **Network use / 网络使用（开发者政策披露）**
 
-This plugin connects **only** to the IMAP server that you configure yourself (default `imap.qq.com`, port 993, TLS). It reads messages whose subject starts with `Log` and contains a `YYYY-MM-DD` date, downloads their bodies and attachments, and decrypts them locally. It does not send diary content, credentials, or telemetry to the plugin author or to any other service. No other network endpoints are used.
+This plugin connects **only** to the IMAP server that you configure yourself (or one derived from your email address when left blank, port 993, TLS). It reads messages whose subject starts with `Log` and contains a `YYYY-MM-DD` date, downloads their bodies and attachments, and decrypts them locally. It does not send diary content, credentials, or telemetry to the plugin author or to any other service. No other network endpoints are used.
 
-中文同上：插件仅连接你自己填写的 IMAP 服务器（默认 `imap.qq.com:993`，TLS），只读取主题以 `Log` 开头且含日期的邮件及其附件，解密全部在本机完成；不会把日记、凭据或任何统计数据发给作者或第三方，也没有其他网络端点。
+中文同上：插件仅连接你自己填写（或留空时按邮箱地址推导）的 IMAP 服务器（端口 993，TLS），只读取主题以 `Log` 开头且含日期的邮件及其附件，解密全部在本机完成；不会把日记、凭据或任何统计数据发给作者或第三方，也没有其他网络端点。
 
 ## 加密说明
 

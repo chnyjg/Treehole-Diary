@@ -183,7 +183,7 @@ export async function fetchDiaries(
     throw new Error(
       `登录失败：${candidates.length} 把授权码均被服务器拒绝` +
         `（${lastErr instanceof Error ? lastErr.message : String(lastErr)}）。` +
-        `请到 mail.qq.com → 设置 → 账号与安全 → 安全设置 重新生成授权码，` +
+        `请到邮箱网页版的设置里重新生成授权码，` +
         `并把旧码填入「备选授权码」以继续解密历史邮件。`
     );
   }

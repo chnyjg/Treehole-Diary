@@ -17,7 +17,7 @@ export async function syncAccount(
   // ---- 解密密钥链（v2 起 diaryKey 优先）----
   // 1) diaryKey：v2 固定日记密钥，与授权码解绑 —— 新邮件一律用它加解密；
   // 2) deriveKey(主授权码)：v1 时代的邮件（升级前用「当时的授权码」加密）；
-  // 3) deriveKey(备选码…)：换过 QQ 密码的用户，更早的邮件用更旧的码加密。
+  // 3) deriveKey(备选码…)：换过授权码的用户，更早的邮件用更旧的码加密。
   // 解密逐把尝试（GCM 校验失败即换下一把），顺序只影响速度不影响正确性。
   const keys: Buffer[] = [];
   const dk = (acct.diaryKey || "").trim();
@@ -31,7 +31,7 @@ export async function syncAccount(
   keys.push(deriveDiaryKey(acct.authCode));
 
   // 支持「备选授权码」：应对中途重置授权码 / 前段用别的邮箱发，导致旧邮件用不同密钥加密。
-  // 备选码可能有多把（每次改 QQ 密码都会让旧码失效，但旧码仍是历史邮件的解密密钥），
+  // 备选码可能有多把（每次换授权码都会让旧码失效，但旧码仍是历史邮件的解密密钥），
   // 用逗号分隔，一并派生密钥、逐把尝试登录。
   const altCodes = (acct.altAuthCode || "")
     .split(",")

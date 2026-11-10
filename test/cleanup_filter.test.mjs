@@ -26,20 +26,20 @@ try {
   });
   const { isDiaryMail } = require(out);
 
-  const ACCT = "me@qq.com";
+  const ACCT = "me@example.com";
   const cases = [
-    ["Log [日常] 2026-11-09", "me@qq.com", true, "标准日记邮件"],
-    ["Log [导入] 2026-11-04", "ME@QQ.COM", true, "发件人大小写不敏感"],
-    ["Log 2026-11-09", "me@qq.com", true, "无标签也命中"],
-    ["Blog 2026-11-09", "me@qq.com", false, "Blog 不能命中（历史 bug）"],
-    ["Login 2026-11-09", "me@qq.com", false, "Login 不能命中（历史 bug）"],
-    ["Catalog 2026-11-09", "me@qq.com", false, "Catalog 不能命中"],
-    ["Log [日常] 无日期", "me@qq.com", false, "缺完整日期不放行"],
-    ["请查收 2026-11-09", "me@qq.com", false, "不以 Log 开头"],
-    ["Log [日常] 2026-11-09", "other@qq.com", false, "别人发来的同格式邮件必须保留"],
+    ["Log [日常] 2026-11-09", "me@example.com", true, "标准日记邮件"],
+    ["Log [导入] 2026-11-04", "ME@EXAMPLE.COM", true, "发件人大小写不敏感"],
+    ["Log 2026-11-09", "me@example.com", true, "无标签也命中"],
+    ["Blog 2026-11-09", "me@example.com", false, "Blog 不能命中（历史 bug）"],
+    ["Login 2026-11-09", "me@example.com", false, "Login 不能命中（历史 bug）"],
+    ["Catalog 2026-11-09", "me@example.com", false, "Catalog 不能命中"],
+    ["Log [日常] 无日期", "me@example.com", false, "缺完整日期不放行"],
+    ["请查收 2026-11-09", "me@example.com", false, "不以 Log 开头"],
+    ["Log [日常] 2026-11-09", "other@example.com", false, "别人发来的同格式邮件必须保留"],
     ["Log [日常] 2026-11-09", "", false, "发件人为空不放行"],
-    ["", "me@qq.com", false, "空主题不放行"],
-    ["Log [日常] 2026-11-09", "me@qq.com ", true, "发件人带空格"],
+    ["", "me@example.com", false, "空主题不放行"],
+    ["Log [日常] 2026-11-09", "me@example.com ", true, "发件人带空格"],
   ];
   for (const [subject, from, expected, label] of cases) {
     assert.equal(

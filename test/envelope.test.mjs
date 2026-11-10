@@ -40,7 +40,7 @@ function decryptEnvelope(env, passphrase) {
   return JSON.parse(json);
 }
 
-const cfg = { email: "user@example.com", imapHost: "imap.qq.com", authCode: "ABCD1234EFGH5678" };
+const cfg = { email: "user@example.com", imapHost: "imap.example.com", authCode: "ABCD1234EFGH5678" };
 const pass = "K7M2QP";
 
 const env = encryptEnvelope(cfg, pass);

@@ -1,6 +1,11 @@
 import { App, Vault } from "obsidian";
 import { DiaryEntry } from "./imap";
-import { collectTags, padTagFirstLine, stripLegacyTagLines } from "./tags";
+import {
+  collectTags,
+  padTagBlocks,
+  padTagFirstLine,
+  stripLegacyTagLines,
+} from "./tags";
 
 type Adapter = App["vault"]["adapter"];
 
@@ -62,13 +67,6 @@ interface Written {
   dayPieces: string[]; // 含图稿
   dayPiecesText: string[]; // 纯文稿（图片为 [照片N] 占位）
   photoRel: string[];
-}
-
-function stripImages(piece: string): string {
-  return piece
-    .split("\n")
-    .filter((l) => !l.trimStart().startsWith("!["))
-    .join("\n");
 }
 
 /**
@@ -208,7 +206,8 @@ export async function writeOutputs(
 
     const sep = dayPieces.length > 1 ? "\n\n---\n\n" : "\n\n";
     const content = normalizeDividers(`# ${date}\n\n` + dayPieces.join(sep) + "\n");
-    await writeText(adapter, `${outFolder}/${mdName}`, content);
+    // 末道兜底：标签行上下各保一个空行（幂等，不动其它字符）
+    await writeText(adapter, `${outFolder}/${mdName}`, padTagBlocks(content));
   }
 
   // 第二步：汇总 / 索引改为从「磁盘上已落盘的单日 .md」读取生成，
@@ -250,8 +249,9 @@ async function readAllDaysFromDisk(
     const date = base.slice(0, 10);
     const raw = await adapter.read(file);
     // 旧版在每段开头写过「- 标签：xxx」；只做定点摘除，其余内容（含用户手改）一字不动。
-    // 摘除后回写，这样单日文件本身也不再带重复行，汇总稿自然也是干净的。
-    const content = stripLegacyTagLines(raw);
+    // 再做一次标签行上下留白的定点补齐：这样即使当天没有新邮件、或文件来自旧版本，
+    // 单日文件本身也会恢复格式。两者都是幂等的定点插入，不重排用户正文。
+    const content = padTagBlocks(stripLegacyTagLines(raw));
     if (content !== raw) await writeText(adapter, file, content);
     // 去掉首行「# YYYY-MM-DD」标题，取整段正文
     const body = content.replace(/^#\s*\d{4}-\d{2}-\d{2}\s*\n?/, "");
@@ -377,11 +377,11 @@ async function writeBundle(
   await writeText(
     adapter,
     `${outFolder}/all_entries.md`,
-    normalizeDividers(withImg.join("\n"))
+    padTagBlocks(normalizeDividers(withImg.join("\n")))
   );
   await writeText(
     adapter,
     `${outFolder}/all_entries_text.md`,
-    normalizeDividers(noImg.join("\n"))
+    padTagBlocks(normalizeDividers(noImg.join("\n")))
   );
 }

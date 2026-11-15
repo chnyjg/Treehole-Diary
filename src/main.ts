@@ -50,7 +50,7 @@ export default class LiuhunReader extends Plugin {
     if (this.settings.autoSyncOnOpen) {
       // 布局就绪后延迟同步一次（覆盖「打开 Obsidian」场景）
       this.app.workspace.onLayoutReady(() => {
-        setTimeout(() => this.maybeAutoSync(), 3000);
+        window.setTimeout(() => this.maybeAutoSync(), 3000);
       });
       // 打开树洞日记目录下的文件时也同步（覆盖「打开树洞日记」场景）
       this.registerEvent(
@@ -61,7 +61,7 @@ export default class LiuhunReader extends Plugin {
             file.path === this.settings.outFolder ||
             file.path.startsWith(prefix)
           ) {
-            this.maybeAutoSync();
+            void this.maybeAutoSync();
           }
         })
       );
@@ -117,7 +117,7 @@ export default class LiuhunReader extends Plugin {
     let obj: any;
     try {
       obj = JSON.parse(text);
-    } catch (e) {
+    } catch {
       // 把内容前 80 字回显出来：JSON 解析失败最常见的原因是
       // ① 少了收尾引号 ② 粘进了多余文字/换行 ③ 复制时带上了别的内容
       const preview = text.slice(0, 80).replace(/\n/g, "⏎");
@@ -199,7 +199,7 @@ export default class LiuhunReader extends Plugin {
         enabled: true,
       });
     }
-    this.saveSettings();
+    void this.saveSettings();
     new Notice(`已导入账号：${email}`);
   }
 
@@ -273,18 +273,20 @@ class ImportConfigModal extends Modal {
     btnRow.setCssStyles({ marginTop: "12px" });
     const readBtn = btnRow.createEl("button", { text: "从剪贴板读取" });
     readBtn.setCssStyles({ marginRight: "8px" });
-    readBtn.addEventListener("click", async () => {
-      try {
-        const txt = await (navigator as any).clipboard.readText();
-        if (txt && txt.trim()) {
-          ta.value = txt.trim();
-          new Notice("已从剪贴板填入");
-        } else {
-          new Notice("剪贴板为空，请手动粘贴");
+    readBtn.addEventListener("click", () => {
+      void (async () => {
+        try {
+          const txt = await (navigator as any).clipboard.readText();
+          if (txt && txt.trim()) {
+            ta.value = txt.trim();
+            new Notice("已从剪贴板填入");
+          } else {
+            new Notice("剪贴板为空，请手动粘贴");
+          }
+        } catch {
+          new Notice("无法读取剪贴板，请手动粘贴");
         }
-      } catch {
-        new Notice("无法读取剪贴板，请手动粘贴");
-      }
+      })();
     });
     const importBtn = btnRow.createEl("button", { text: "导入" });
     importBtn.setCssStyles({ marginLeft: "8px" });
@@ -353,7 +355,7 @@ class AddAccountModal extends Modal {
         altAuthCode: alt || undefined,
         enabled: true,
       });
-      this.plugin.saveSettings();
+      void this.plugin.saveSettings();
       new Notice(`已添加账号：${email}`);
       this.close();
     });
@@ -400,7 +402,7 @@ class CleanupConfirmModal extends Modal {
       .addButton((b) => b.setButtonText("取消").onClick(() => this.close()))
       .addButton((b) => {
         this.delBtn = b;
-        b.setButtonText("检查中…").setDisabled(true).setWarning();
+        b.setButtonText("检查中…").setDisabled(true);
         b.onClick(() => void this.confirmDelete());
       });
 
@@ -515,6 +517,17 @@ class LiuhunSettingTab extends PluginSettingTab {
     containerEl.empty();
     new Setting(containerEl).setName("树洞日记").setHeading();
 
+    // 最常用的操作放最上面，不用滚到设置页底部去找。
+    new Setting(containerEl)
+      .setName("立即同步")
+      .setDesc("从邮箱拉取最新日记并写入本库；也可以点左侧的同步图标")
+      .addButton((b) =>
+        b
+          .setButtonText("立即同步")
+          .setCta()
+          .onClick(() => this.plugin.syncAll())
+      );
+
     new Setting(containerEl)
       .setName("输出文件夹")
       .setDesc("合并后的 Markdown 写到 vault 下的此文件夹")
@@ -568,12 +581,12 @@ class LiuhunSettingTab extends PluginSettingTab {
           })
         )
         .addButton((b) =>
-          b.setButtonText("清理邮件").setWarning().onClick(() => {
+          b.setButtonText("清理邮件").setDestructive().setCta().onClick(() => {
             new CleanupConfirmModal(this.app, this.plugin, acct).open();
           })
         )
         .addButton((b) =>
-          b.setButtonText("删除账号").setWarning().onClick(async () => {
+          b.setButtonText("删除账号").setDestructive().setCta().onClick(async () => {
             this.plugin.settings.accounts = this.plugin.settings.accounts.filter(
               (a) => a.id !== acct.id
             );
@@ -592,12 +605,6 @@ class LiuhunSettingTab extends PluginSettingTab {
       b.setButtonText("导入引导配置(.treehole)").onClick(() => {
         this.plugin.importConfig();
       })
-    );
-    new Setting(containerEl).addButton((b) =>
-      b
-        .setButtonText("立即同步")
-        .setCta()
-        .onClick(() => this.plugin.syncAll())
     );
   }
 }

@@ -1,6 +1,8 @@
 import esbuild from "esbuild";
 import process from "process";
-import builtins from "builtin-modules";
+import { builtinModules } from "module";
+
+const builtins = builtinModules.map((m) => m.replace(/^node:/, ""));
 
 const prod = process.argv[2] === "production";
 

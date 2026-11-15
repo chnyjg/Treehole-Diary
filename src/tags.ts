@@ -51,6 +51,36 @@ export function padTagFirstLine(body: string): string {
 }
 
 /**
+ * 整篇兜底：凡是「独占一行的 #标签」，都保证它上下各有一个空行，
+ * 让标签在纸面上独立成块，不与标题 / --- / 正文贴在一起。
+ *
+ * 与 padTagFirstLine 的分工：后者只在「一段正文的开头」补下方空行，
+ * 覆盖不到来自旧文件、汇总拼装、手改过的内容；本函数用在**落盘前的最后一道**，
+ * 不依赖内容从哪来，所以无论走哪条写入路径都不会再漏。
+ *
+ * 定点插入、已有空行一律保留，重复执行结果不变（幂等）。
+ * Markdown 标题「# 2026-11-12」# 后有空格，不匹配 TAG_ONLY_LINE，不会被误伤。
+ */
+export function padTagBlocks(md: string): string {
+  const lines = md.split("\n");
+  const out: string[] = [];
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    if (!TAG_ONLY_LINE.test(line.trim())) {
+      out.push(line);
+      continue;
+    }
+    // 上方：文件开头不补；上一行本来就是空行就不补
+    if (out.length > 0 && out[out.length - 1].trim() !== "") out.push("");
+    out.push(line);
+    // 下方：文件结尾不补；下一行本来就是空行就不补
+    const next = i + 1 < lines.length ? lines[i + 1] : null;
+    if (next !== null && next.trim() !== "") out.push("");
+  }
+  return out.join("\n");
+}
+
+/**
  * 收集某一天的标签（供 index.md 的链接后缀与「标签统计」用）。
  * ① 兼容历史文件：仍读旧元信息行；② 现在的主要来源：正文里的行内 #标签。
  * 判定与手机端一致：# 前必须是行首或空白，名字里不含空白和 #。

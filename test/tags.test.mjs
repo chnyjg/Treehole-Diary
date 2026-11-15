@@ -24,7 +24,7 @@ try {
     outfile: out,
     logLevel: "silent",
   });
-  const { stripLegacyTagLines, collectTags, padTagFirstLine } = require(out);
+  const { stripLegacyTagLines, collectTags, padTagFirstLine, padTagBlocks } = require(out);
 
   // 真实落盘结构：单日文件 + 两篇日记 + --- 分隔线
   const daily = [
@@ -109,7 +109,43 @@ try {
   assert.equal(padTagFirstLine("# 2026-11-10\n正文"), "# 2026-11-10\n正文");
   assert.equal(padTagFirstLine("正文里 #tag 出现\n"), "正文里 #tag 出现\n");
   assert.equal(padTagFirstLine(""), "");
-  console.log("tags: 标签摘除与索引收集用例全部通过");
+
+  // 整篇兜底：标签行上下各一个空行（用户 2026-11-12 要求恢复的效果）
+  const tight = ["# 2026-11-12", "#爷爷奶奶", "今天去了口腔医院"].join("\n");
+  const padded = ["# 2026-11-12", "", "#爷爷奶奶", "", "今天去了口腔医院"].join("\n");
+  assert.equal(padTagBlocks(tight), padded, "标题与标签、标签与正文之间都要补空行");
+  assert.equal(padTagBlocks(padded), padded, "已有空行不重排，重复执行幂等");
+
+  // 汇总稿 / 分隔线之后紧跟标签，也要上下留白
+  assert.equal(
+    padTagBlocks(["## 2026-11-12", "#爷爷奶奶", "正文"].join("\n")),
+    ["## 2026-11-12", "", "#爷爷奶奶", "", "正文"].join("\n"),
+    "汇总稿的 ## 日期 之后"
+  );
+  assert.equal(
+    padTagBlocks(["---", "#感悟 ", "正文"].join("\n")),
+    ["---", "", "#感悟 ", "", "正文"].join("\n"),
+    "--- 分隔线之后"
+  );
+
+  // 不误伤：Markdown 标题、句中标签、文件末尾的标签
+  assert.equal(
+    padTagBlocks("# 2026-11-12\n正文里 #tag 出现\n"),
+    "# 2026-11-12\n正文里 #tag 出现\n",
+    "标题 / 句中标签不动"
+  );
+  assert.equal(
+    padTagBlocks("正文\n#带娃"),
+    "正文\n\n#带娃",
+    "文件末尾的标签只补上方，不凭空补尾行"
+  );
+  assert.equal(
+    padTagBlocks("#周末 #带娃\n正文"),
+    "#周末 #带娃\n\n正文",
+    "同一行多个标签也算独占标签行"
+  );
+
+  console.log("tags: 标签摘除、索引收集、上下留白用例全部通过");
 } finally {
   rmSync(tmp, { recursive: true, force: true });
 }

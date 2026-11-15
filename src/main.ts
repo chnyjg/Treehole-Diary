@@ -13,12 +13,58 @@ import { scanDiaryMailGroups, cleanupDiaryMails } from "./cleanup";
 import type { DiaryMailHit } from "./cleanup";
 import { Account, LiuhunSettings, DEFAULT_SETTINGS } from "./types";
 
+/** 设置页文案字典：中英双语。切换语言只影响界面文字，不影响任何数据/邮箱/加密逻辑。 */
+const L = {
+  zh: {
+    title: "树洞日记",
+    language: "语言",
+    languageDesc: "设置页的界面语言",
+    langZh: "中文（简体）",
+    langEn: "English",
+    syncNow: "立即同步",
+    syncNowDesc: "从邮箱拉取最新日记并写入本库；也可以点左侧的同步图标",
+    outFolder: "输出文件夹",
+    outFolderDesc: "合并后的 Markdown 写到 vault 下的此文件夹",
+    order: "合并稿排序",
+    orderDesc: "newest=新在上，oldest=早在上",
+    newest: "新在上",
+    oldest: "早在上",
+    autoSync: "自动同步",
+    account: "账号",
+    importCfg: "导入引导配置(.treehole)",
+    accountHint:
+      "导入引导配置会覆盖原有账号：始终只保留一个邮箱（避免多个邮箱的日记写到同名文件互相覆盖）。换邮箱直接导入新配置即可，无需先删除。邮箱满了可用「清理邮件」腾空间：只删除本 App 发出的日记邮件，其他邮件保留；删除前会再同步一次并二次确认。",
+    cleanMail: "清理邮件",
+  },
+  en: {
+    title: "Treehole Diary",
+    language: "Language",
+    languageDesc: "Interface language of the settings page",
+    langZh: "Chinese (Simplified)",
+    langEn: "English",
+    syncNow: "Sync now",
+    syncNowDesc: "Pull the latest diary entries from the mailbox into this vault; you can also click the sync icon on the left",
+    outFolder: "Output folder",
+    outFolderDesc: "Merged Markdown files are written to this folder in the vault",
+    order: "Merged note order",
+    orderDesc: "newest = newest first, oldest = oldest first",
+    newest: "Newest first",
+    oldest: "Oldest first",
+    autoSync: "Auto sync",
+    account: "Accounts",
+    importCfg: "Import setup config (.treehole)",
+    accountHint:
+      "Importing a setup config replaces the existing account: only one mailbox is kept at all times (to avoid diary entries from multiple mailboxes overwriting the same files). To switch mailboxes, just import the new config — no need to delete first. If the mailbox is full, use \"Clean mail\" to free space: only diary emails sent by this app are removed, all other emails are kept; it syncs once more and asks for confirmation before deleting.",
+    cleanMail: "Clean mail",
+  },
+} as const;
+
 function genId(): string {
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
 }
 
 /** IMAP 主机留空时按邮箱域名推导：name@example.com → imap.example.com。
- *  各服务商主机不同，推导不对就在「手动添加账号」里填实际主机。 */
+ *  各服务商主机不同时，引导配置里可直接带来正确的 imapHost。 */
 function guessImapHost(email: string): string {
   const d = (email.split("@")[1] || "").trim().toLowerCase();
   if (!d.includes(".") || d.startsWith(".") || d.endsWith(".")) return "";
@@ -130,11 +176,10 @@ export default class LiuhunReader extends Plugin {
     }
     // 明文格式：含 email + authCode，无需口令，直接导入
     if (obj && typeof obj.email === "string" && typeof obj.authCode === "string") {
-      this.addAccountFromCfg(
+      this.replaceAccountFromCfg(
         obj.email,
         obj.imapHost || guessImapHost(obj.email),
         obj.authCode,
-        typeof obj.altAuthCode === "string" ? obj.altAuthCode : undefined,
         typeof obj.diaryKey === "string" ? obj.diaryKey : undefined
       );
       return;
@@ -144,7 +189,7 @@ export default class LiuhunReader extends Plugin {
       new PassphraseModal(this.app, (pass) => {
         try {
           const cfg = decryptEnvelope(obj as Envelope, pass);
-          this.addAccountFromCfg(cfg.email, cfg.imapHost, cfg.authCode);
+          this.replaceAccountFromCfg(cfg.email, cfg.imapHost, cfg.authCode);
         } catch {
           new Notice("解密失败：口令或文件有误");
         }
@@ -154,12 +199,16 @@ export default class LiuhunReader extends Plugin {
     new Notice("内容不是有效的引导配置");
   }
 
-  /** 新增账号；同邮箱（忽略大小写）已存在则更新，不去重新增 */
-  private addAccountFromCfg(
+  /**
+   * 覆盖式导入：永远只保留一个邮箱账号。
+   * 每次导入引导配置都整体替换账号列表，而不是按邮箱追加/更新。
+   * 原因：插件按日期命名日记文件，多个邮箱同时开启会在同一天互相覆盖、静默丢内容。
+   * 这样从源头保证「永远只有一个邮箱在同步」。
+   */
+  private replaceAccountFromCfg(
     email: string,
     imapHost: string,
     authCode: string,
-    altAuthCode?: string,
     diaryKey?: string
   ) {
     if (!email || !authCode) {
@@ -167,45 +216,37 @@ export default class LiuhunReader extends Plugin {
       return;
     }
     const host = imapHost || guessImapHost(email);
-    // 备选码可能有多把（每次换授权码都会新增一把只能解密的历史密钥），逗号分隔
-    const normAlt = (altAuthCode || "")
-      .split(",")
-      .map((s) => s.trim())
-      .filter((s) => s.length > 0)
-      .join(",");
-    const existing = this.settings.accounts.find(
-      (a) => a.email.trim().toLowerCase() === email.trim().toLowerCase()
-    );
-    if (existing) {
-      existing.imapHost = host;
-      existing.authCode = authCode;
-      // 备选码：只在配置里明确带了才覆盖，避免把用户手填的旧码冲掉
-      if (normAlt) {
-        existing.altAuthCode = normAlt;
-      }
-      // v2 固定日记密钥：配置里带了才覆盖（老配置没有此字段，不冲掉）
-      if (diaryKey && diaryKey.trim()) {
-        existing.diaryKey = diaryKey.trim();
-      }
-      existing.enabled = true;
-    } else {
-      this.settings.accounts.push({
+    // 整体替换：清掉旧账号（含旧邮箱），只留配置里这一个，永远保证单一邮箱
+    this.settings.accounts = [
+      {
         id: genId(),
         email,
         imapHost: host,
         authCode,
-        altAuthCode: normAlt || undefined,
         diaryKey: diaryKey && diaryKey.trim() ? diaryKey.trim() : undefined,
         enabled: true,
-      });
-    }
+      },
+    ];
     void this.saveSettings();
-    new Notice(`已导入账号：${email}`);
+    new Notice(`已导入账号：${email}（已替换原有账号，当前只保留这一个邮箱）`);
   }
 
   async loadSettings() {
     this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
     if (!this.settings.accounts) this.settings.accounts = [];
+    // 永远只保留一个邮箱：兼容老配置里残留的多个账号，收敛为第一个启用的（否则第一个）。
+    // 与「导入即覆盖」配合，从加载和导入两端都保证单邮箱，避免日记按日期同名互相覆盖。
+    if (this.settings.accounts.length > 1) {
+      const keep =
+        this.settings.accounts.find((a) => a.enabled) || this.settings.accounts[0];
+      const dropped = this.settings.accounts.length - 1;
+      this.settings.accounts = [keep];
+      await this.saveSettings();
+      window.setTimeout(
+        () => new Notice(`已收敛为单个邮箱账号（移除 ${dropped} 个旧账号）`),
+        0
+      );
+    }
   }
 
   async saveSettings() {
@@ -298,66 +339,6 @@ class ImportConfigModal extends Modal {
       }
       this.close();
       this.plugin.importFromText(txt);
-    });
-  }
-  onClose() {
-    this.contentEl.empty();
-  }
-}
-
-class AddAccountModal extends Modal {
-  plugin: LiuhunReader;
-  constructor(app: App, plugin: LiuhunReader) {
-    super(app);
-    this.plugin = plugin;
-  }
-  onOpen() {
-    const { contentEl } = this;
-    contentEl.empty();
-    new Setting(contentEl).setName("手动添加账号").setHeading();
-
-    const fields: Record<string, HTMLInputElement> = {};
-    const mk = (label: string, placeholder: string, type = "text") => {
-      contentEl.createEl("label", { text: label });
-      const i = contentEl.createEl("input");
-      i.type = type;
-      i.placeholder = placeholder;
-      i.setCssStyles({ width: "100%", marginBottom: "8px" });
-      fields[label] = i;
-      return i;
-    };
-    mk("邮箱", "name@example.com");
-    mk("IMAP 主机", "imap.example.com");
-    const auth = mk("授权码", "16位授权码", "password");
-    const altAuth = mk("备选授权码（可选，多把逗号分隔）", "旧码A,旧码B（旧码只解密、不能登录）", "password");
-    contentEl.createEl("p", {
-      text:
-        "换过授权码后，旧码通常就不能再登录邮箱了，但它仍是历史加密邮件的解密密钥。" +
-        "换码时把旧码填在这里，历史日记才不会解不开。",
-    });
-
-    const btn = contentEl.createEl("button", { text: "保存" });
-    btn.setCssStyles({ marginTop: "12px" });
-    btn.addEventListener("click", () => {
-      const email = fields["邮箱"].value.trim();
-      const imapHost = fields["IMAP 主机"].value.trim();
-      const code = auth.value.trim();
-      const alt = altAuth.value.trim();
-      if (!email || !code) {
-        new Notice("邮箱和授权码必填");
-        return;
-      }
-      this.plugin.settings.accounts.push({
-        id: genId(),
-        email,
-        imapHost: imapHost || guessImapHost(email),
-        authCode: code,
-        altAuthCode: alt || undefined,
-        enabled: true,
-      });
-      void this.plugin.saveSettings();
-      new Notice(`已添加账号：${email}`);
-      this.close();
     });
   }
   onClose() {
@@ -515,36 +496,40 @@ class LiuhunSettingTab extends PluginSettingTab {
   display() {
     const { containerEl } = this;
     containerEl.empty();
-    new Setting(containerEl).setName("树洞日记").setHeading();
+    const t = L[this.plugin.settings.language] || L.zh;
+
+    new Setting(containerEl).setName(t.title).setHeading();
 
     // 最常用的操作放最上面，不用滚到设置页底部去找。
     new Setting(containerEl)
-      .setName("立即同步")
-      .setDesc("从邮箱拉取最新日记并写入本库；也可以点左侧的同步图标")
+      .setName(t.syncNow)
+      .setDesc(t.syncNowDesc)
       .addButton((b) =>
         b
-          .setButtonText("立即同步")
+          .setButtonText(t.syncNow)
           .setCta()
           .onClick(() => this.plugin.syncAll())
       );
 
     new Setting(containerEl)
-      .setName("输出文件夹")
-      .setDesc("合并后的 Markdown 写到 vault 下的此文件夹")
-      .addText((t) =>
-        t.setValue(this.plugin.settings.outFolder).onChange(async (v) => {
-          this.plugin.settings.outFolder = v.trim() || "树洞日记";
-          await this.plugin.saveSettings();
-        })
+      .setName(t.outFolder)
+      .setDesc(t.outFolderDesc)
+      .addText((text) =>
+        text
+          .setValue(this.plugin.settings.outFolder)
+          .onChange(async (v) => {
+            this.plugin.settings.outFolder = v.trim() || "treehole";
+            await this.plugin.saveSettings();
+          })
       );
 
     new Setting(containerEl)
-      .setName("合并稿排序")
-      .setDesc("newest=新在上，oldest=早在上")
+      .setName(t.order)
+      .setDesc(t.orderDesc)
       .addDropdown((d) =>
         d
-          .addOption("newest", "新在上")
-          .addOption("oldest", "早在上")
+          .addOption("newest", t.newest)
+          .addOption("oldest", t.oldest)
           .setValue(this.plugin.settings.order)
           .onChange(async (v) => {
             this.plugin.settings.order = v as "newest" | "oldest";
@@ -553,10 +538,7 @@ class LiuhunSettingTab extends PluginSettingTab {
       );
 
     new Setting(containerEl)
-      .setName("打开时自动同步")
-      .setDesc(
-        "打开 Obsidian 或打开树洞日记目录下的文件时，自动拉取最新日记（每 5 分钟最多一次）。关闭后需手动点「立即同步」。"
-      )
+      .setName(t.autoSync)
       .addToggle((tg) =>
         tg
           .setValue(this.plugin.settings.autoSyncOnOpen)
@@ -566,9 +548,30 @@ class LiuhunSettingTab extends PluginSettingTab {
           })
       );
 
-    new Setting(containerEl).setName("账号").setHeading();
+    new Setting(containerEl)
+      .setName(t.language)
+      .setDesc(t.languageDesc)
+      .addDropdown((d) =>
+        d
+          .addOption("zh", t.langZh)
+          .addOption("en", t.langEn)
+          .setValue(this.plugin.settings.language)
+          .onChange(async (v) => {
+            this.plugin.settings.language = v as "zh" | "en";
+            await this.plugin.saveSettings();
+            this.display(); // 立即用新语言重绘设置页
+          })
+      );
+
+    new Setting(containerEl).setName(t.account).setHeading();
+    new Setting(containerEl).addButton((b) =>
+      b.setButtonText(t.importCfg).setCta().onClick(() => {
+        this.plugin.importConfig();
+      })
+    );
     containerEl.createEl("p", {
-      text: "邮箱满了可用「清理邮件」腾空间：只删除本 App 发出的日记邮件，其他邮件保留；删除前会再同步一次并二次确认。",
+      cls: "setting-item-description",
+      text: t.accountHint,
     });
     this.plugin.settings.accounts.forEach((acct) => {
       new Setting(containerEl)
@@ -581,30 +584,10 @@ class LiuhunSettingTab extends PluginSettingTab {
           })
         )
         .addButton((b) =>
-          b.setButtonText("清理邮件").setDestructive().setCta().onClick(() => {
+          b.setButtonText(t.cleanMail).setDestructive().setCta().onClick(() => {
             new CleanupConfirmModal(this.app, this.plugin, acct).open();
-          })
-        )
-        .addButton((b) =>
-          b.setButtonText("删除账号").setDestructive().setCta().onClick(async () => {
-            this.plugin.settings.accounts = this.plugin.settings.accounts.filter(
-              (a) => a.id !== acct.id
-            );
-            await this.plugin.saveSettings();
-            this.display();
           })
         );
     });
-
-    new Setting(containerEl).addButton((b) =>
-      b.setButtonText("手动添加账号").onClick(() => {
-        new AddAccountModal(this.app, this.plugin).open();
-      })
-    );
-    new Setting(containerEl).addButton((b) =>
-      b.setButtonText("导入引导配置(.treehole)").onClick(() => {
-        this.plugin.importConfig();
-      })
-    );
   }
 }

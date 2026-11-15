@@ -44,11 +44,7 @@ export interface CleanupResult {
  * 「其实已经删掉了」也被记成「成功 0 封」。
  */
 async function connect(acct: Account): Promise<ImapFlow> {
-  const alt = (acct.altAuthCode || "")
-    .split(",")
-    .map((s) => s.trim())
-    .filter((s) => s.length > 0);
-  const passwords = [acct.authCode, ...alt].filter(
+  const passwords = [acct.authCode].filter(
     (p) => p && p.trim().length > 0
   );
   if (passwords.length === 0) throw new Error("没有可用的授权码");

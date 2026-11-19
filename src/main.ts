@@ -19,45 +19,60 @@ const L = {
     title: "树洞日记",
     language: "语言",
     languageDesc: "设置页的界面语言",
+    langAuto: "跟随 Obsidian",
     langZh: "中文（简体）",
     langEn: "English",
     syncNow: "立即同步",
-    syncNowDesc: "从邮箱拉取最新日记并写入本库；也可以点左侧的同步图标",
     outFolder: "输出文件夹",
     outFolderDesc: "合并后的 Markdown 写到 vault 下的此文件夹",
     order: "合并稿排序",
-    orderDesc: "newest=新在上，oldest=早在上",
-    newest: "新在上",
-    oldest: "早在上",
+    orderDesc: "newest=新日记在上，oldest=旧日记在上",
+    newest: "新日记在上",
+    oldest: "旧日记在上",
     autoSync: "自动同步",
     account: "账号",
     importCfg: "导入引导配置(.treehole)",
+    importCfgDesc: "粘贴或导入从「树洞日记」App 导出的引导配置文件",
     accountHint:
-      "导入引导配置会覆盖原有账号：始终只保留一个邮箱（避免多个邮箱的日记写到同名文件互相覆盖）。换邮箱直接导入新配置即可，无需先删除。邮箱满了可用「清理邮件」腾空间：只删除本 App 发出的日记邮件，其他邮件保留；删除前会再同步一次并二次确认。",
+      "邮箱满了可用「清理邮件」腾空间：只删除本 App 发出的日记邮件，其他邮件保留；删除前会再同步一次并二次确认。",
     cleanMail: "清理邮件",
   },
   en: {
     title: "Treehole Diary",
     language: "Language",
     languageDesc: "Interface language of the settings page",
+    langAuto: "Follow Obsidian",
     langZh: "Chinese (Simplified)",
     langEn: "English",
     syncNow: "Sync now",
-    syncNowDesc: "Pull the latest diary entries from the mailbox into this vault; you can also click the sync icon on the left",
     outFolder: "Output folder",
     outFolderDesc: "Merged Markdown files are written to this folder in the vault",
     order: "Merged note order",
-    orderDesc: "newest = newest first, oldest = oldest first",
-    newest: "Newest first",
-    oldest: "Oldest first",
+    orderDesc: "newest = new diary first, oldest = old diary first",
+    newest: "New diary first",
+    oldest: "Old diary first",
     autoSync: "Auto sync",
     account: "Accounts",
     importCfg: "Import setup config (.treehole)",
+    importCfgDesc:
+      "Paste or import the setup config file exported by the Treehole Diary app",
     accountHint:
-      "Importing a setup config replaces the existing account: only one mailbox is kept at all times (to avoid diary entries from multiple mailboxes overwriting the same files). To switch mailboxes, just import the new config — no need to delete first. If the mailbox is full, use \"Clean mail\" to free space: only diary emails sent by this app are removed, all other emails are kept; it syncs once more and asks for confirmation before deleting.",
+      "If the mailbox is full, use \"Clean mail\" to free space: only diary emails sent by this app are removed, all other emails are kept; it syncs once more and asks for confirmation before deleting.",
     cleanMail: "Clean mail",
   },
 } as const;
+
+/** 把设置里的语言偏好解析成实际渲染语言：auto 时读 Obsidian 自身的界面语言。
+ *  Obsidian 把语言存在 localStorage 的 "language" 键（如 zh / zh-TW / en）。 */
+function resolveLang(pref: "zh" | "en" | "auto"): "zh" | "en" {
+  if (pref === "zh" || pref === "en") return pref;
+  const raw = (
+    window.localStorage.getItem("language") ||
+    navigator.language ||
+    "en"
+  ).toLowerCase();
+  return raw.startsWith("zh") ? "zh" : "en";
+}
 
 function genId(): string {
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
@@ -120,11 +135,7 @@ export default class LiuhunReader extends Plugin {
     if (this.autoSyncing) return;
     const now = Date.now();
     if (now - this.lastAutoSync < LiuhunReader.AUTO_SYNC_COOLDOWN_MS) return;
-    if (
-      !this.settings.accounts ||
-      this.settings.accounts.filter((a) => a.enabled).length === 0
-    )
-      return;
+    if (!this.settings.accounts || this.settings.accounts.length === 0) return;
     this.lastAutoSync = now;
     this.autoSyncing = true;
     try {
@@ -135,9 +146,9 @@ export default class LiuhunReader extends Plugin {
   }
 
   async syncAll() {
-    const list = this.settings.accounts.filter((a) => a.enabled);
+    const list = this.settings.accounts;
     if (list.length === 0) {
-      new Notice("没有已启用的账号，请先在设置里添加或导入");
+      new Notice("还没有账号，请先在设置里导入引导配置");
       return;
     }
     for (const acct of list) {
@@ -224,7 +235,6 @@ export default class LiuhunReader extends Plugin {
         imapHost: host,
         authCode,
         diaryKey: diaryKey && diaryKey.trim() ? diaryKey.trim() : undefined,
-        enabled: true,
       },
     ];
     void this.saveSettings();
@@ -237,8 +247,7 @@ export default class LiuhunReader extends Plugin {
     // 永远只保留一个邮箱：兼容老配置里残留的多个账号，收敛为第一个启用的（否则第一个）。
     // 与「导入即覆盖」配合，从加载和导入两端都保证单邮箱，避免日记按日期同名互相覆盖。
     if (this.settings.accounts.length > 1) {
-      const keep =
-        this.settings.accounts.find((a) => a.enabled) || this.settings.accounts[0];
+      const keep = this.settings.accounts[0];
       const dropped = this.settings.accounts.length - 1;
       this.settings.accounts = [keep];
       await this.saveSettings();
@@ -496,14 +505,13 @@ class LiuhunSettingTab extends PluginSettingTab {
   display() {
     const { containerEl } = this;
     containerEl.empty();
-    const t = L[this.plugin.settings.language] || L.zh;
+    const t = L[resolveLang(this.plugin.settings.language)] || L.zh;
 
     new Setting(containerEl).setName(t.title).setHeading();
 
     // 最常用的操作放最上面，不用滚到设置页底部去找。
     new Setting(containerEl)
       .setName(t.syncNow)
-      .setDesc(t.syncNowDesc)
       .addButton((b) =>
         b
           .setButtonText(t.syncNow)
@@ -553,22 +561,25 @@ class LiuhunSettingTab extends PluginSettingTab {
       .setDesc(t.languageDesc)
       .addDropdown((d) =>
         d
+          .addOption("auto", t.langAuto)
           .addOption("zh", t.langZh)
           .addOption("en", t.langEn)
           .setValue(this.plugin.settings.language)
           .onChange(async (v) => {
-            this.plugin.settings.language = v as "zh" | "en";
+            this.plugin.settings.language = v as "zh" | "en" | "auto";
             await this.plugin.saveSettings();
             this.display(); // 立即用新语言重绘设置页
           })
       );
 
     new Setting(containerEl).setName(t.account).setHeading();
-    new Setting(containerEl).addButton((b) =>
-      b.setButtonText(t.importCfg).setCta().onClick(() => {
-        this.plugin.importConfig();
-      })
-    );
+    new Setting(containerEl)
+      .setDesc(t.importCfgDesc)
+      .addButton((b) =>
+        b.setButtonText(t.importCfg).setCta().onClick(() => {
+          this.plugin.importConfig();
+        })
+      );
     containerEl.createEl("p", {
       cls: "setting-item-description",
       text: t.accountHint,
@@ -577,14 +588,8 @@ class LiuhunSettingTab extends PluginSettingTab {
       new Setting(containerEl)
         .setName(acct.email)
         .setDesc(acct.imapHost)
-        .addToggle((tg) =>
-          tg.setValue(acct.enabled).onChange(async (v) => {
-            acct.enabled = v;
-            await this.plugin.saveSettings();
-          })
-        )
         .addButton((b) =>
-          b.setButtonText(t.cleanMail).setDestructive().setCta().onClick(() => {
+          b.setButtonText(t.cleanMail).setWarning().setCta().onClick(() => {
             new CleanupConfirmModal(this.app, this.plugin, acct).open();
           })
         );

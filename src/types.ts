@@ -9,7 +9,6 @@ export interface Account {
    * 可空（未升级的账号走 deriveKey(授权码) 旧逻辑）。
    */
   diaryKey?: string;
-  enabled: boolean;
 }
 
 export interface LiuhunSettings {
@@ -18,8 +17,8 @@ export interface LiuhunSettings {
   order: "newest" | "oldest";
   /** 打开 Obsidian 或打开输出目录下文件时，自动拉取最新日记（每 5 分钟最多一次） */
   autoSyncOnOpen: boolean;
-  /** 设置页界面语言：zh=中文（简体），en=English */
-  language: "zh" | "en";
+  /** 设置页界面语言：zh=中文（简体），en=English，auto=跟随 Obsidian 自身语言 */
+  language: "zh" | "en" | "auto";
 }
 
 export const DEFAULT_SETTINGS: LiuhunSettings = {

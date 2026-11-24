@@ -13,6 +13,7 @@ import { syncAccount } from "./sync";
 import { scanDiaryMailGroups, cleanupDiaryMails } from "./cleanup";
 import type { DiaryMailHit } from "./cleanup";
 import { Account, LiuhunSettings, DEFAULT_SETTINGS } from "./types";
+import { countDiaryChars, diaryCharLevel } from "./calendar";
 
 /** 设置页文案字典：中英双语。切换语言只影响界面文字，不影响任何数据/邮箱/加密逻辑。 */
 const L = {
@@ -42,6 +43,7 @@ const L = {
     prevMonth: "上个月",
     nextMonth: "下个月",
     noData: "（无日记）",
+    charUnit: "字",
     yearSuffix: " 年",
     monthSuffix: " 月",
   },
@@ -72,6 +74,7 @@ const L = {
     prevMonth: "Prev",
     nextMonth: "Next",
     noData: "(no diary)",
+    charUnit: "chars",
     yearSuffix: "",
     monthSuffix: "",
   },
@@ -99,12 +102,13 @@ const WEEKDAYS: Record<"zh" | "en", string[]> = {
 };
 
 /** 日记日历弹窗：扫描输出目录下的 YYYY-MM-DD.md，点有日记的日期打开对应文件。
- *  只用 Modal / TFile / Vault.getFiles 等老 API，兼容 minAppVersion 1.4.0。 */
+ *  格子底色按正文长度分 5 档绿色（字少浅、字多深）。
+ *  只用 Modal / TFile / Vault.getFiles / Vault.cachedRead 等老 API，兼容 minAppVersion 1.4.0。 */
 class DiaryCalendarModal extends Modal {
   private plugin: LiuhunReader;
   private year: number;
   private month: number; // 0-based
-  private diaryDates = new Set<string>();
+  private diaryChars = new Map<string, number>(); // 日期 → 有效正文字数
   private minDate = "";
   private maxDate = "";
 
@@ -113,7 +117,7 @@ class DiaryCalendarModal extends Modal {
     this.plugin = plugin;
   }
 
-  onOpen(): void {
+  async onOpen(): Promise<void> {
     const { contentEl } = this;
     contentEl.empty();
     contentEl.addClass("td-calendar");
@@ -121,21 +125,29 @@ class DiaryCalendarModal extends Modal {
     const lang = resolveLang(this.plugin.settings.language);
     const t = L[lang];
 
-    // 扫描输出目录下所有 YYYY-MM-DD.md，收集日期
+    // 扫描输出目录下所有 YYYY-MM-DD.md，并读取正文统计字数用于分档。
+    // 只读日记文件，不碰邮件；某天文件读失败时按 0 字处理，日期标记仍在。
     const outFolder = this.plugin.settings.outFolder;
     const prefix = outFolder + "/";
     for (const file of this.app.vault.getFiles()) {
       if (!file.path.startsWith(prefix)) continue;
       const m = /^(\d{4}-\d{2}-\d{2})\.md$/.exec(file.name);
-      if (m) this.diaryDates.add(m[1]);
+      if (!m) continue;
+      let chars = 0;
+      try {
+        chars = countDiaryChars(await this.app.vault.cachedRead(file));
+      } catch {
+        chars = 0;
+      }
+      this.diaryChars.set(m[1], chars);
     }
 
-    if (this.diaryDates.size === 0) {
+    if (this.diaryChars.size === 0) {
       contentEl.createEl("p", { text: t.calendarEmpty, cls: "td-cal-empty" });
       return;
     }
 
-    const sorted = [...this.diaryDates].sort();
+    const sorted = [...this.diaryChars.keys()].sort();
     this.minDate = sorted[0];
     this.maxDate = sorted[sorted.length - 1];
     // 默认打开最新日记所在月
@@ -245,13 +257,17 @@ class DiaryCalendarModal extends Modal {
     const days = new Date(this.year, this.month + 1, 0).getDate();
     for (let d = 1; d <= days; d++) {
       const iso = `${this.year}-${String(this.month + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
-      const has = this.diaryDates.has(iso);
+      const chars = this.diaryChars.get(iso);
+      const has = chars !== undefined;
+      const level = has ? diaryCharLevel(chars) : 0;
       const cell = grid.createEl("div", {
-        cls: "td-cal-cell" + (has ? " td-cal-has" : ""),
+        cls: "td-cal-cell" + (has ? ` td-cal-has td-cal-l${level}` : ""),
         text: String(d),
       });
       cell.setAttribute("aria-label", iso + (has ? "" : t.noData));
       if (has) {
+        // 悬浮显示实际字数，方便对照颜色深浅
+        cell.setAttribute("title", `${chars} ${t.charUnit}`);
         cell.onclick = () => void this.openDay(iso);
       }
     }

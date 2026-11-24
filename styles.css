@@ -98,13 +98,14 @@
   border-radius: 4px;
 }
 
-/* 同步成功提示：只保留蓝色导入图标，去掉 Obsidian 通知默认黑底和文字留白。
+/* 同步成功提示：白底圆角小卡片托住蓝色导入图标，不衬 Obsidian 默认黑底。
    失败提示走普通 Notice，不带这个类，仍显示完整错误信息。 */
 .td-sync-icon-notice {
-  background: transparent !important;
-  box-shadow: none !important;
+  background: #ffffff !important;
+  border-radius: 8px !important;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12) !important;
   border: none !important;
-  padding: 0 !important;
+  padding: 6px !important;
   min-width: 0 !important;
   width: auto !important;
 }

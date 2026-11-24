@@ -1,5 +1,6 @@
 import { App, Vault } from "obsidian";
 import { DiaryEntry } from "./imap";
+import { makeSquareThumb } from "./thumb";
 import {
   collectTags,
   padTagBlocks,
@@ -98,10 +99,15 @@ function normalizeDividers(body: string): string {
   return out.join("\n");
 }
 
-// Obsidian 图片显示宽度约束：md 写成 ![照片N|480](原图)，由 Obsidian 按 480 缩放渲染。
-// 旧实现额外生成 t_photoN.jpg 缩略图（最长边 480）再引用它，结果 360×480 的小图被拉到 480 显示，
-// 等于放大显示、必然发虚；显示尺寸已由 |480 控制，缩略图这层是多余的，故不再生成。
-const IMG_DISPLAY_WIDTH = 480;
+// 照片在 Obsidian 里的显示策略（2026-11-24）：
+// 正文放一张「居中裁方的方图」（480×480），以 ![照片N|300](方图) 显示成正方形缩略图；
+// 再把整张缩略图包进指向「原图」的链接，点一下就打开原图看全幅。
+// 这里没有沿用旧实现那条「最长边缩略图 + |480 放大」的路子：那条会把 360×480 拉大发虚。
+// 方图是真裁成正方形的，显示宽度 300 < 480，属于缩小显示，清晰。
+// 裁图依赖 Electron 的 createImageBitmap/canvas；不可用时退回 ![照片N|480](原图) 老写法。
+const IMG_DISPLAY_WIDTH = 300; // 方图缩略图的显示宽度（正方形边长）
+const IMG_FALLBACK_WIDTH = 480; // 裁图不可用时的老写法宽度
+const IMG_SQUARE_PX = 480; // 实际生成的方图像素边长
 
 // 图片占位符：App 端上传照片时在光标处插入的 {{IMG:N}}（N = 该照片在本篇中的序号）。
 // 第二个右括号设为可选，以兼容个别历史邮件里被截断成 {{IMG:N} 的脏数据。
@@ -110,32 +116,37 @@ const IMG_TOKEN = /\{\{IMG:(\d+)\}\}?/g;
 interface ImgRef {
   g: number; // 当天全局照片编号
   rel: string; // 相对路径（assets/日期/photoN.jpg，指向原图）
+  squareRel?: string; // 方图相对路径（assets/日期/s_photoN.jpg）；裁图不可用则为空
 }
 
 /**
  * 把正文里的 {{IMG:k}} 替换成真正的图片引用。
  * k 是 1-based 的「本篇内第几张」，映射到 eImgs[k-1]。
- *   useImg=true  → ![照片g](rel)
+ *   useImg=true  → 有方图：[![照片g|300](方图)](原图)（显示方形，点击打开原图）
+ *                  没方图：![照片g|480](原图)（老写法兜底）
  *   useImg=false → [照片g]（纯文本占位，便于 AI 知道此处有图）
  * 未被任何占位符引用的照片（旧邮件 / 手误漏写 token）追加到正文末尾，避免丢图。
  */
+function imgMd(ref: ImgRef, useImg: boolean): string {
+  if (!useImg) return `[照片${ref.g}]`;
+  if (ref.squareRel)
+    return `[![照片${ref.g}|${IMG_DISPLAY_WIDTH}](${ref.squareRel})](${ref.rel})`;
+  return `![照片${ref.g}|${IMG_FALLBACK_WIDTH}](${ref.rel})`;
+}
+
 function expandImages(body: string, eImgs: ImgRef[], useImg: boolean): string {
   const referenced = new Set<number>();
   const out = body.replace(IMG_TOKEN, (m, kStr: string) => {
     const k = parseInt(kStr, 10);
     if (k >= 1 && k <= eImgs.length) {
       referenced.add(k);
-      const { g, rel } = eImgs[k - 1];
-      return useImg ? `![照片${g}|${IMG_DISPLAY_WIDTH}](${rel})` : `[照片${g}]`;
+      return imgMd(eImgs[k - 1], useImg);
     }
     return m;
   });
   const unref = eImgs.filter((_, i) => !referenced.has(i + 1));
   if (unref.length) {
-    const tail = unref
-      .map(({ g, rel }) => (useImg ? `![照片${g}|${IMG_DISPLAY_WIDTH}](${rel})` : `[照片${g}]`))
-      .join("\n");
-    return out + "\n\n" + tail;
+    return out + "\n\n" + unref.map((r) => imgMd(r, useImg)).join("\n");
   }
   return out;
 }
@@ -188,9 +199,18 @@ export async function writeOutputs(
         const safe = `photo${photoIdx}${ext}`;
         const fullAb = bufToArrayBuffer(img.data);
         await writeBinary(vault, `${dayAssets}/${safe}`, fullAb);
-        // 直接引用原图；显示尺寸由 expandImages 写入的 |IMG_DISPLAY_WIDTH 控制，无需缩略图
         const rel = `assets/${date}/${safe}`;
-        eImgs.push({ g: photoIdx, rel });
+
+        // 居中裁方生成 s_photoN.jpg；仅影响本次新写的单日文件，老文件不动。
+        // 裁图失败（Node 测试环境 / Electron 未开放 canvas）就退回老写法引用原图。
+        let squareRel: string | undefined;
+        const square = await makeSquareThumb(img.data, IMG_SQUARE_PX);
+        if (square) {
+          const sName = `s_photo${photoIdx}.jpg`;
+          await writeBinary(vault, `${dayAssets}/${sName}`, bufToArrayBuffer(square));
+          squareRel = `assets/${date}/${sName}`;
+        }
+        eImgs.push({ g: photoIdx, rel, squareRel });
       }
 
       // 把正文里的 {{IMG:k}} 就地替换成图片引用（或文本占位），
@@ -264,9 +284,12 @@ async function readAllDaysFromDisk(
       .map(padTagFirstLine)
       .filter(Boolean);
     if (dayPieces.length === 0) continue;
-    // 纯文版：把 ![照片N|480](rel) 换成 [照片N]
+    // 纯文版：把图片写法换成 [照片N]。
+    // 新写法是 [![照片N|300](方图)](原图) 的嵌套链接，老写法是 ![照片N|480](原图)，两种都要认。
     const dayPiecesText = dayPieces.map((p) =>
-      p.replace(/!\[照片(\d+)\|480\]\([^)]*\)/g, "[照片$1]")
+      p
+        .replace(/\[!\[照片(\d+)\|\d+\]\([^)]*\)\]\([^)]*\)/g, "[照片$1]")
+        .replace(/!\[照片(\d+)\|\d+\]\([^)]*\)/g, "[照片$1]")
     );
     // 索引标签用原始内容：历史元信息行（摘除前的旧行）+ 正文里的 #标签 都算，
     // 这样旧文件不再显示重复行，index.md 的链接后缀与「标签统计」也不会丢。

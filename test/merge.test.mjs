@@ -133,6 +133,33 @@ try {
     vault.store.get(`${OUT}/index.md`).includes("旧标签"),
     "历史标签仍进索引统计"
   );
+
+  // 照片：Node 测试环境没有 canvas，裁图能力不可用 → 退回老写法 ![照片N|480](原图)。
+  // 这里验证「不崩 + 原图写盘 + 纯文版正确换成 [照片N]」。
+  // 方图分支（Electron 有 canvas）单独由 square-thumb.test.mjs 注入假 canvas 验证。
+  const withPhoto = [
+    {
+      date: "2026-11-24",
+      tags: "摄影",
+      mood: "",
+      body: "今天的照片 {{IMG:1}} 好看。",
+      images: [{ name: "IMG_0001.JPG", data: Buffer.from([0xff, 0xd8, 0xff, 0xd9]) }],
+    },
+  ];
+  const pv = makeVault();
+  await writeOutputs(pv.app, withPhoto, OUT, "newest");
+  const pDaily = pv.store.get(`${OUT}/2026-11-24.md`);
+  assert.ok(pDaily.includes("![照片1|480](assets/2026-11-24/photo1.JPG)"),
+    "Node 环境裁图不可用时退回老写法引用原图");
+  assert.ok(pv.store.has(`${OUT}/assets/2026-11-24/photo1.JPG`), "原图必须写盘");
+  assert.ok(
+    pv.store.get(`${OUT}/all_entries_text.md`).includes("[照片1]"),
+    "纯文汇总稿要把图片引用换成 [照片N]"
+  );
+  assert.ok(
+    !pv.store.get(`${OUT}/all_entries_text.md`).includes("!["),
+    "纯文汇总稿不能残留 markdown 图片语法"
+  );
   console.log("merge: 同步落盘链路用例全部通过");
 } finally {
   rmSync(tmp, { recursive: true, force: true });

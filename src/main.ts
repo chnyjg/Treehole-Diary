@@ -6,6 +6,7 @@ import {
   Modal,
   Notice,
   ButtonComponent,
+  TFile,
 } from "obsidian";
 import { decryptEnvelope, Envelope } from "./crypto";
 import { syncAccount } from "./sync";
@@ -36,6 +37,13 @@ const L = {
     accountHint:
       "邮箱满了可用「清理邮件」腾空间：只删除本 App 发出的日记邮件，其他邮件保留；删除前会再同步一次并二次确认。",
     cleanMail: "清理邮件",
+    calendar: "日记日历",
+    calendarEmpty: "还没有日记，先同步一次吧",
+    prevMonth: "上个月",
+    nextMonth: "下个月",
+    noData: "（无日记）",
+    yearSuffix: " 年",
+    monthSuffix: " 月",
   },
   en: {
     title: "Treehole Diary",
@@ -59,6 +67,13 @@ const L = {
     accountHint:
       "If the mailbox is full, use \"Clean mail\" to free space: only diary emails sent by this app are removed, all other emails are kept; it syncs once more and asks for confirmation before deleting.",
     cleanMail: "Clean mail",
+    calendar: "Diary calendar",
+    calendarEmpty: "No diary yet. Sync first.",
+    prevMonth: "Prev",
+    nextMonth: "Next",
+    noData: "(no diary)",
+    yearSuffix: "",
+    monthSuffix: "",
   },
 } as const;
 
@@ -76,6 +91,186 @@ function resolveLang(pref: "zh" | "en" | "auto"): "zh" | "en" {
 
 function genId(): string {
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+}
+
+const WEEKDAYS: Record<"zh" | "en", string[]> = {
+  zh: ["一", "二", "三", "四", "五", "六", "日"],
+  en: ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"],
+};
+
+/** 日记日历弹窗：扫描输出目录下的 YYYY-MM-DD.md，点有日记的日期打开对应文件。
+ *  只用 Modal / TFile / Vault.getFiles 等老 API，兼容 minAppVersion 1.4.0。 */
+class DiaryCalendarModal extends Modal {
+  private plugin: LiuhunReader;
+  private year: number;
+  private month: number; // 0-based
+  private diaryDates = new Set<string>();
+  private minDate = "";
+  private maxDate = "";
+
+  constructor(app: App, plugin: LiuhunReader) {
+    super(app);
+    this.plugin = plugin;
+  }
+
+  onOpen(): void {
+    const { contentEl } = this;
+    contentEl.empty();
+    contentEl.addClass("td-calendar");
+
+    const lang = resolveLang(this.plugin.settings.language);
+    const t = L[lang];
+
+    // 扫描输出目录下所有 YYYY-MM-DD.md，收集日期
+    const outFolder = this.plugin.settings.outFolder;
+    const prefix = outFolder + "/";
+    for (const file of this.app.vault.getFiles()) {
+      if (!file.path.startsWith(prefix)) continue;
+      const m = /^(\d{4}-\d{2}-\d{2})\.md$/.exec(file.name);
+      if (m) this.diaryDates.add(m[1]);
+    }
+
+    if (this.diaryDates.size === 0) {
+      contentEl.createEl("p", { text: t.calendarEmpty, cls: "td-cal-empty" });
+      return;
+    }
+
+    const sorted = [...this.diaryDates].sort();
+    this.minDate = sorted[0];
+    this.maxDate = sorted[sorted.length - 1];
+    // 默认打开最新日记所在月
+    const [y, m] = this.maxDate.split("-").map(Number);
+    this.year = y;
+    this.month = m - 1;
+
+    this.render();
+  }
+
+  private monthKey(y: number, m: number): string {
+    return `${y}-${String(m + 1).padStart(2, "0")}`;
+  }
+
+  private canGo(delta: number): boolean {
+    const target = this.monthKey(
+      this.year,
+      this.month + delta
+    );
+    const minMonth = this.minDate.slice(0, 7);
+    const maxMonth = this.maxDate.slice(0, 7);
+    return target >= minMonth && target <= maxMonth;
+  }
+
+  /** 某年某月是否落在已有日记的年月范围内 */
+  private monthInRange(y: number, m: number): boolean {
+    const key = this.monthKey(y, m);
+    return key >= this.minDate.slice(0, 7) && key <= this.maxDate.slice(0, 7);
+  }
+
+  private shift(delta: number): void {
+    const d = new Date(this.year, this.month + delta, 1);
+    this.year = d.getFullYear();
+    this.month = d.getMonth();
+    this.render();
+  }
+
+  private render(): void {
+    const { contentEl } = this;
+    contentEl.empty();
+    const lang = resolveLang(this.plugin.settings.language);
+    const t = L[lang];
+
+    // 标题栏：上月 / [年下拉][月下拉] / 下月
+    const bar = contentEl.createDiv({ cls: "td-cal-bar" });
+    const prev = bar.createEl("button", { text: t.prevMonth });
+    prev.disabled = !this.canGo(-1);
+    prev.onclick = () => this.shift(-1);
+
+    const title = bar.createDiv({ cls: "td-cal-title td-cal-picker" });
+    const minYear = Number(this.minDate.slice(0, 4));
+    const maxYear = Number(this.maxDate.slice(0, 4));
+
+    // 年份下拉：最早年份 ~ 最晚年份
+    const yearSel = title.createEl("select", { cls: "td-cal-select" });
+    for (let y = minYear; y <= maxYear; y++) {
+      const opt = yearSel.createEl("option", {
+        value: String(y),
+        text: `${y}${t.yearSuffix}`,
+      });
+      if (y === this.year) opt.selected = true;
+    }
+    yearSel.onchange = () => {
+      this.year = Number(yearSel.value);
+      // 换年后若当前月越界，夹到该年的第一个合法月
+      if (!this.monthInRange(this.year, this.month)) {
+        for (let m = 0; m < 12; m++) {
+          if (this.monthInRange(this.year, m)) {
+            this.month = m;
+            break;
+          }
+        }
+      }
+      this.render();
+    };
+
+    // 月份下拉：只列该年份中落在日记范围内的月份
+    const monthSel = title.createEl("select", { cls: "td-cal-select" });
+    for (let m = 0; m < 12; m++) {
+      if (!this.monthInRange(this.year, m)) continue;
+      const opt = monthSel.createEl("option", {
+        value: String(m),
+        text: `${String(m + 1).padStart(2, "0")}${t.monthSuffix}`,
+      });
+      if (m === this.month) opt.selected = true;
+    }
+    monthSel.onchange = () => {
+      this.month = Number(monthSel.value);
+      this.render();
+    };
+
+    const next = bar.createEl("button", { text: t.nextMonth });
+    next.disabled = !this.canGo(1);
+    next.onclick = () => this.shift(1);
+
+    // 星期表头（周一为首）
+    const grid = contentEl.createDiv({ cls: "td-cal-grid" });
+    for (const w of WEEKDAYS[lang]) {
+      grid.createEl("div", { cls: "td-cal-wd", text: w });
+    }
+
+    // 当月 1 号是星期几，转成周一=0
+    const firstDow = (new Date(this.year, this.month, 1).getDay() + 6) % 7;
+    for (let i = 0; i < firstDow; i++) {
+      grid.createEl("div", { cls: "td-cal-cell td-cal-blank" });
+    }
+    const days = new Date(this.year, this.month + 1, 0).getDate();
+    for (let d = 1; d <= days; d++) {
+      const iso = `${this.year}-${String(this.month + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+      const has = this.diaryDates.has(iso);
+      const cell = grid.createEl("div", {
+        cls: "td-cal-cell" + (has ? " td-cal-has" : ""),
+        text: String(d),
+      });
+      cell.setAttribute("aria-label", iso + (has ? "" : t.noData));
+      if (has) {
+        cell.onclick = () => void this.openDay(iso);
+      }
+    }
+  }
+
+  private async openDay(iso: string): Promise<void> {
+    const path = `${this.plugin.settings.outFolder}/${iso}.md`;
+    const file = this.app.vault.getAbstractFileByPath(path);
+    if (file instanceof TFile) {
+      this.close();
+      await this.app.workspace.getLeaf(false).openFile(file);
+    } else {
+      new Notice(`${iso} 的日记文件不存在`);
+    }
+  }
+
+  onClose(): void {
+    this.contentEl.empty();
+  }
 }
 
 /** IMAP 主机留空时按邮箱域名推导：name@example.com → imap.example.com。
@@ -96,10 +291,18 @@ export default class LiuhunReader extends Plugin {
     await this.loadSettings();
 
     this.addRibbonIcon("sync", "同步树洞日记", () => this.syncAll());
+    this.addRibbonIcon("calendar-days", "日记日历", () => {
+      new DiaryCalendarModal(this.app, this).open();
+    });
     this.addCommand({
       id: "sync-all",
       name: "同步树洞日记（全部账号）",
       callback: () => this.syncAll(),
+    });
+    this.addCommand({
+      id: "open-diary-calendar",
+      name: "日记日历",
+      callback: () => new DiaryCalendarModal(this.app, this).open(),
     });
     this.addCommand({
       id: "import-config",

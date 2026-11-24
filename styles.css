@@ -97,3 +97,18 @@
   object-fit: cover !important;
   border-radius: 4px;
 }
+
+/* 同步成功提示：只保留绿色对勾云图标，去掉 Obsidian 通知默认黑底和文字留白。
+   失败提示走普通 Notice，不带这个类，仍显示完整错误信息。 */
+.td-sync-icon-notice {
+  background: transparent !important;
+  box-shadow: none !important;
+  border: none !important;
+  padding: 0 !important;
+  min-width: 0 !important;
+  width: auto !important;
+}
+
+.td-sync-icon-notice svg {
+  display: block;
+}

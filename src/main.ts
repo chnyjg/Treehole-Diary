@@ -96,6 +96,21 @@ function genId(): string {
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
 }
 
+/** 同步成功提示：只弹一个绿色对勾云图标，不再显示「已同步 xxx：N 天 / N 条」。
+ *  Notice.noticeEl 是 Obsidian 1.4.0 就有的公开 DOM 容器，插 SVG 不依赖新 API。
+ *  失败提示仍走普通文字 Notice，不能省掉错误信息。 */
+const SYNC_OK_SVG =
+  '<svg viewBox="0 0 1024 1024" width="26" height="26" xmlns="http://www.w3.org/2000/svg">' +
+  '<path d="M512 512m-512 0a512 512 0 1 0 1024 0 512 512 0 1 0-1024 0Z" fill="#53BF1D"></path>' +
+  '<path d="M642.944 554.048a32 32 0 0 1 2.496 40.96l-3.84 4.288-135.744 128a32 32 0 0 1-39.04 3.84l-4.864-3.84-67.904-64a32 32 0 0 1 39.36-50.176l4.544 3.584 45.888 43.264 113.856-107.264a32 32 0 0 1 45.248 1.344zM512 224a224 224 0 0 1 221.056 187.648l0.96 7.168 0.96 0.192a160.064 160.064 0 0 1 128.64 146.496L864 576a160 160 0 0 1-160 160 32 32 0 1 1 0-64 96 96 0 0 0 9.216-191.552L704 480h-32V448A160 160 0 0 0 512 288a160 160 0 0 0-158.72 139.328l-0.96 10.304-1.216 41.216-38.272 1.408A96 96 0 0 0 320 672a32 32 0 1 1 0 64 160 160 0 0 1-41.856-314.304l11.776-2.752 1.152-8.128a224.064 224.064 0 0 1 208.704-186.496L512 224z" fill="#FFFFFF"></path>' +
+  "</svg>";
+
+function showSyncSuccessIcon(): void {
+  const n = new Notice("", 2500);
+  n.noticeEl.addClass("td-sync-icon-notice");
+  n.noticeEl.innerHTML = SYNC_OK_SVG;
+}
+
 const WEEKDAYS: Record<"zh" | "en", string[]> = {
   zh: ["一", "二", "三", "四", "五", "六", "日"],
   en: ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"],
@@ -372,13 +387,14 @@ export default class LiuhunReader extends Plugin {
     }
     for (const acct of list) {
       try {
-        const summary = await syncAccount(
+        await syncAccount(
           acct,
           this.app,
           this.settings.outFolder,
           this.settings.order
         );
-        new Notice(`已同步 ${acct.email}：${summary}`);
+        // 成功时只弹图标，不再显示统计文字
+        showSyncSuccessIcon();
       } catch (e) {
         new Notice(`同步失败 ${acct.email}：${(e as Error).message}`);
       }

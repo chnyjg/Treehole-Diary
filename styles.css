@@ -98,14 +98,23 @@
   border-radius: 4px;
 }
 
-/* 同步成功提示：白底圆角小卡片托住蓝色导入图标，不衬 Obsidian 默认黑底。
-   失败提示走普通 Notice，不带这个类，仍显示完整错误信息。 */
+/* 同步成功提示：外层绿色圆角方框 + 白色线条图标。
+   失败提示走普通 Notice，不带这两个类，仍显示完整错误信息。 */
+.td-sync-outer {
+  background: #20c791 !important;
+  border-radius: 10px !important;
+  box-shadow: none !important;
+  padding: 10px !important;
+  min-width: 0 !important;
+  width: auto !important;
+}
+
 .td-sync-icon-notice {
-  background: #ffffff !important;
-  border-radius: 8px !important;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12) !important;
+  background: transparent !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
   border: none !important;
-  padding: 6px !important;
+  padding: 8px !important;
   min-width: 0 !important;
   width: auto !important;
 }

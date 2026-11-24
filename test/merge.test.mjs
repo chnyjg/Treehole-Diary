@@ -134,9 +134,9 @@ try {
     "历史标签仍进索引统计"
   );
 
-  // 照片：Node 测试环境没有 canvas，裁图能力不可用 → 退回老写法 ![照片N|480](原图)。
+  // 照片：不再依赖 canvas，任何环境都写 ![照片N|300](原图)，方形显示交给 CSS。
   // 这里验证「不崩 + 原图写盘 + 纯文版正确换成 [照片N]」。
-  // 方图分支（Electron 有 canvas）单独由 square-thumb.test.mjs 注入假 canvas 验证。
+  // 图片写盘格式由 diary-image.test.mjs 单独验证（原图引用 + CSS 方形缩略）。
   const withPhoto = [
     {
       date: "2026-11-24",
@@ -149,8 +149,8 @@ try {
   const pv = makeVault();
   await writeOutputs(pv.app, withPhoto, OUT, "newest");
   const pDaily = pv.store.get(`${OUT}/2026-11-24.md`);
-  assert.ok(pDaily.includes("![照片1|480](assets/2026-11-24/photo1.JPG)"),
-    "Node 环境裁图不可用时退回老写法引用原图");
+  assert.ok(pDaily.includes("![照片1|300](assets/2026-11-24/photo1.JPG)"),
+    "任何环境都直接引用原图，方形显示交给 CSS");
   assert.ok(pv.store.has(`${OUT}/assets/2026-11-24/photo1.JPG`), "原图必须写盘");
   assert.ok(
     pv.store.get(`${OUT}/all_entries_text.md`).includes("[照片1]"),

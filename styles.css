@@ -84,3 +84,16 @@
   outline: 2px solid var(--interactive-accent, #20c791);
   outline-offset: -2px;
 }
+
+/* 日记照片：正文里显示成 300×300 方形缩略图，但 img 的 src 始终是原图，
+   点开 Obsidian 看图器就是完整画幅。object-fit:cover 居中裁切，不拉伸变形。
+   选择器限定 markdown 正文区，不影响 Obsidian 的图片查看器弹窗。
+   老日记的 ![照片N|480](原图) 同样命中（alt 一致），也自动变成方形缩略。 */
+.markdown-reading-view img[alt^="照片"],
+.markdown-source-view img[alt^="照片"],
+.markdown-rendered img[alt^="照片"] {
+  width: 300px !important;
+  height: 300px !important;
+  object-fit: cover !important;
+  border-radius: 4px;
+}

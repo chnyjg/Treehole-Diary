@@ -1,6 +1,5 @@
 import { App, Vault } from "obsidian";
 import { DiaryEntry } from "./imap";
-import { makeSquareThumb } from "./thumb";
 import {
   collectTags,
   padTagBlocks,
@@ -99,15 +98,12 @@ function normalizeDividers(body: string): string {
   return out.join("\n");
 }
 
-// 照片在 Obsidian 里的显示策略（2026-11-24）：
-// 正文放一张「居中裁方的方图」（480×480），以 ![照片N|300](方图) 显示成正方形缩略图；
-// 再把整张缩略图包进指向「原图」的链接，点一下就打开原图看全幅。
-// 这里没有沿用旧实现那条「最长边缩略图 + |480 放大」的路子：那条会把 360×480 拉大发虚。
-// 方图是真裁成正方形的，显示宽度 300 < 480，属于缩小显示，清晰。
-// 裁图依赖 Electron 的 createImageBitmap/canvas；不可用时退回 ![照片N|480](原图) 老写法。
-const IMG_DISPLAY_WIDTH = 300; // 方图缩略图的显示宽度（正方形边长）
-const IMG_FALLBACK_WIDTH = 480; // 裁图不可用时的老写法宽度
-const IMG_SQUARE_PX = 480; // 实际生成的方图像素边长
+// 照片在 Obsidian 里的显示策略（2026-11-24 修订）：
+// Markdown 只写 ![照片N|300](原图)，img 的 src 始终是原图。
+// 方形缩略由插件 styles.css 在 markdown 正文区用 object-fit:cover 裁出来，
+// 所以点开 Obsidian 看图器读到的还是原图，能看到完整画幅。
+// 早先「生成方图文件 + 嵌套链接」方案已废弃：Obsidian 1.15 点开的是内层方图，不是外层链接。
+const IMG_DISPLAY_WIDTH = 300; // 缩略图边长（CSS 按这个尺寸裁成方形）
 
 // 图片占位符：App 端上传照片时在光标处插入的 {{IMG:N}}（N = 该照片在本篇中的序号）。
 // 第二个右括号设为可选，以兼容个别历史邮件里被截断成 {{IMG:N} 的脏数据。
@@ -115,23 +111,19 @@ const IMG_TOKEN = /\{\{IMG:(\d+)\}\}?/g;
 
 interface ImgRef {
   g: number; // 当天全局照片编号
-  rel: string; // 相对路径（assets/日期/photoN.jpg，指向原图）
-  squareRel?: string; // 方图相对路径（assets/日期/s_photoN.jpg）；裁图不可用则为空
+  rel: string; // 相对路径（assets/日期/photoN.jpg，始终指向原图）
 }
 
 /**
  * 把正文里的 {{IMG:k}} 替换成真正的图片引用。
  * k 是 1-based 的「本篇内第几张」，映射到 eImgs[k-1]。
- *   useImg=true  → 有方图：[![照片g|300](方图)](原图)（显示方形，点击打开原图）
- *                  没方图：![照片g|480](原图)（老写法兜底）
+ *   useImg=true  → ![照片g|300](原图)（方形显示交给 CSS，src 保持原图）
  *   useImg=false → [照片g]（纯文本占位，便于 AI 知道此处有图）
  * 未被任何占位符引用的照片（旧邮件 / 手误漏写 token）追加到正文末尾，避免丢图。
  */
 function imgMd(ref: ImgRef, useImg: boolean): string {
   if (!useImg) return `[照片${ref.g}]`;
-  if (ref.squareRel)
-    return `[![照片${ref.g}|${IMG_DISPLAY_WIDTH}](${ref.squareRel})](${ref.rel})`;
-  return `![照片${ref.g}|${IMG_FALLBACK_WIDTH}](${ref.rel})`;
+  return `![照片${ref.g}|${IMG_DISPLAY_WIDTH}](${ref.rel})`;
 }
 
 /**
@@ -221,16 +213,9 @@ export async function writeOutputs(
         await writeBinary(vault, `${dayAssets}/${safe}`, fullAb);
         const rel = `assets/${date}/${safe}`;
 
-        // 居中裁方生成 s_photoN.jpg；仅影响本次新写的单日文件，老文件不动。
-        // 裁图失败（Node 测试环境 / Electron 未开放 canvas）就退回老写法引用原图。
-        let squareRel: string | undefined;
-        const square = await makeSquareThumb(img.data, IMG_SQUARE_PX);
-        if (square) {
-          const sName = `s_photo${photoIdx}.jpg`;
-          await writeBinary(vault, `${dayAssets}/${sName}`, bufToArrayBuffer(square));
-          squareRel = `assets/${date}/${sName}`;
-        }
-        eImgs.push({ g: photoIdx, rel, squareRel });
+        // 只写原图，不再生成 s_photoN.jpg 方图文件。
+        // 方形缩略交给 styles.css 在显示层裁出来，src 保持原图才能点开看完整画幅。
+        eImgs.push({ g: photoIdx, rel });
       }
 
       // 把正文里的 {{IMG:k}} 就地替换成图片引用（或文本占位），

@@ -113,6 +113,31 @@ try {
   assert.ok(!plain.includes("!["), "纯文版不能残留图片语法：" + plain);
   assert.ok(!plain.includes("](") || plain.includes("](../../"), "纯文版不能有嵌套链接残留");
 
+  // 图片上下各留一个空行：独占段落，Obsidian 渲染时与文字有间距。
+  // 下面验证「原本没空行会补」「原本有空行不重复堆叠」两种输入都得到同样的效果。
+  const IMG = "[![照片1|300](assets/2026-11-24/s_photo1.jpg)](assets/2026-11-24/photo1.jpg)";
+  const oneGap = `前一段\n{{IMG:1}}\n后一段`;
+  const twoGap = `前一段\n\n{{IMG:1}}\n\n后一段`;
+  const expected = `前一段\n\n${IMG}\n\n后一段`;
+
+  const v1 = makeVault();
+  await writeOutputs(v1.app, [{ date: "2026-11-24", tags: "", mood: "", body: oneGap,
+    images: [{ name: "a.jpg", data: Buffer.from([1]) }] }], OUT, "newest");
+  assert.equal(
+    v1.store.get(`${OUT}/2026-11-24.md`).includes(expected),
+    true,
+    "占位符上下没空行时要各补一个：" + v1.store.get(`${OUT}/2026-11-24.md`)
+  );
+
+  const v2 = makeVault();
+  await writeOutputs(v2.app, [{ date: "2026-11-24", tags: "", mood: "", body: twoGap,
+    images: [{ name: "a.jpg", data: Buffer.from([1]) }] }], OUT, "newest");
+  assert.equal(
+    v2.store.get(`${OUT}/2026-11-24.md`).includes(expected),
+    true,
+    "占位符上下已有空行时不能重复堆叠：" + v2.store.get(`${OUT}/2026-11-24.md`)
+  );
+
   console.log("square-thumb: 方图嵌套链接用例全部通过");
 } finally {
   delete globalThis.document;

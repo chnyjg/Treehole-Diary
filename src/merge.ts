@@ -134,19 +134,39 @@ function imgMd(ref: ImgRef, useImg: boolean): string {
   return `![照片${ref.g}|${IMG_FALLBACK_WIDTH}](${ref.rel})`;
 }
 
+/**
+ * 给图片前后补足「一个空行」，让它独占一个段落，Obsidian 渲染时上下就有段落间距。
+ * 只补不删：原本已有空行就保持原样，绝不折叠用户正文里已有的多个空行。
+ * 规则：前面不足两个换行 → 补到两个；后面同理。
+ */
+function withImageGap(whole: string, offset: number, matchLen: number, img: string): string {
+  const before = whole.slice(0, offset);
+  const after = whole.slice(offset + matchLen);
+  let prefix = "";
+  if (before.endsWith("\n\n")) prefix = "";
+  else if (before.endsWith("\n")) prefix = "\n";
+  else prefix = "\n\n";
+  let suffix = "";
+  if (after.startsWith("\n\n")) suffix = "";
+  else if (after.startsWith("\n")) suffix = "\n";
+  else suffix = "\n\n";
+  return prefix + img + suffix;
+}
+
 function expandImages(body: string, eImgs: ImgRef[], useImg: boolean): string {
   const referenced = new Set<number>();
-  const out = body.replace(IMG_TOKEN, (m, kStr: string) => {
+  const out = body.replace(IMG_TOKEN, (m, kStr: string, offset: number, whole: string) => {
     const k = parseInt(kStr, 10);
     if (k >= 1 && k <= eImgs.length) {
       referenced.add(k);
-      return imgMd(eImgs[k - 1], useImg);
+      return withImageGap(whole, offset, m.length, imgMd(eImgs[k - 1], useImg));
     }
     return m;
   });
   const unref = eImgs.filter((_, i) => !referenced.has(i + 1));
   if (unref.length) {
-    return out + "\n\n" + unref.map((r) => imgMd(r, useImg)).join("\n");
+    // 末尾追加的未引用照片之间也各留一个空行，避免挤在同一段落
+    return out + "\n\n" + unref.map((r) => imgMd(r, useImg)).join("\n\n");
   }
   return out;
 }

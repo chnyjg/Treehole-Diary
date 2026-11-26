@@ -1,4 +1,4 @@
-import { App, Vault } from "obsidian";
+import { App } from "obsidian";
 import { DiaryEntry } from "./imap";
 import {
   collectTags,
@@ -29,29 +29,21 @@ async function writeText(
   path: string,
   data: string
 ): Promise<void> {
-  if (await adapter.exists(path)) {
-    try {
-      await adapter.remove(path);
-    } catch {
-      /* ignore */
-    }
-  }
+  // 11-26 修复「同步后跳空白页」：绝不能先 remove 再 write。
+  // DataAdapter.write 本身就是覆盖写；若先 remove，Obsidian 会当作该文件被删除，
+  // 正在打开它的标签页随即失去 TFile 引用 → 变成空白页，且重建的文件不会挂回原标签。
+  // 直接覆盖写则 Obsidian 只发 modify、就地刷新内容，页面保持停留在当前页/all_entries。
   await adapter.write(path, data);
 }
 
 async function writeBinary(
-  vault: Vault,
+  adapter: Adapter,
   path: string,
   data: ArrayBuffer
 ): Promise<void> {
-  if (await vault.adapter.exists(path)) {
-    try {
-      await vault.adapter.remove(path);
-    } catch {
-      /* ignore */
-    }
-  }
-  await vault.createBinary(path, data);
+  // 同 writeText：图片也改为原地覆盖写，不再 remove + createBinary。
+  // DataAdapter.write 运行时支持 ArrayBuffer 且会覆盖；老 obsidian 类型包签名只写 string，故断言。
+  await adapter.write(path, data as unknown as string);
 }
 
 function bufToArrayBuffer(buf: Buffer): ArrayBuffer {
@@ -170,7 +162,6 @@ export async function writeOutputs(
   order: "newest" | "oldest"
 ): Promise<{ days: number; entries: number }> {
   const adapter = app.vault.adapter;
-  const vault = app.vault;
   await ensureDir(adapter, outFolder);
   // assets 及其日期子目录都按需创建：只有当天真的要写照片时才建，
   // 避免没照片的日期在 vault 里留下一排空文件夹。
@@ -210,7 +201,7 @@ export async function writeOutputs(
         const ext = dot >= 0 ? img.name.slice(dot) : ".jpg";
         const safe = `photo${photoIdx}${ext}`;
         const fullAb = bufToArrayBuffer(img.data);
-        await writeBinary(vault, `${dayAssets}/${safe}`, fullAb);
+        await writeBinary(adapter, `${dayAssets}/${safe}`, fullAb);
         const rel = `assets/${date}/${safe}`;
 
         // 只写原图，不再生成 s_photoN.jpg 方图文件。
